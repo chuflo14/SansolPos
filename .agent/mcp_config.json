@@ -15,10 +15,17 @@
                 "shadcn@latest",
                 "mcp"
             ]
+        },
+        "supabase-mcp-server": {
+            "command": "npx",
+            "args": [
+                "-y",
+                "@supabase/mcp-server"
+            ],
+            "env": {
+                "SUPABASE_PROJECT_ID": "yjgtfrmolpjfcuzrcaum"
+            }
         }
-        //other mcp servers
     }
 }
-
 // setup mcp server in  ~/.gemini\antigravity\mcp_config.json
-
