@@ -1,20 +1,69 @@
 'use client';
 
-import { useState } from 'react';
-import { Search, Plus, Upload, MoreVertical, Edit2, Trash2 } from 'lucide-react';
-
-const MOCK_PRODUCTS = [
-    { id: '1', sku: 'LA001', name: 'Leche Descremada', category: 'Lácteos', price: 1200, cost: 800, stock: 45, minStock: 20, image: 'https://placehold.co/100' },
-    { id: '2', sku: 'PA002', name: 'Pan Lactal', category: 'Panadería', price: 950, cost: 500, stock: 20, minStock: 15, image: 'https://placehold.co/100' },
-    { id: '3', sku: 'AL003', name: 'Café Instantáneo', category: 'Almacén', price: 4500, cost: 3200, stock: 5, minStock: 10, image: 'https://placehold.co/100' },
-    { id: '4', sku: 'AL004', name: 'Yerba Mate', category: 'Almacén', price: 3200, cost: 2100, stock: 12, minStock: 20, image: 'https://placehold.co/100' },
-    { id: '5', sku: 'AL005', name: 'Azúcar Blanca', category: 'Almacén', price: 850, cost: 600, stock: 0, minStock: 10, image: 'https://placehold.co/100' },
-];
+import { useState, useEffect, useCallback } from 'react';
+import { Search, Plus, Upload, MoreVertical, Edit2, Trash2, Loader2 } from 'lucide-react';
+import { createClient } from '@/lib/supabase/client';
+import { useAuth } from '@/context/AuthContext';
+import { ProductModal, Product } from '@/components/products/ProductModal';
+import { ImportCSVModal } from '@/components/products/ImportCSVModal';
 
 export default function ProductsPage() {
     const [searchTerm, setSearchTerm] = useState('');
+    const [products, setProducts] = useState<Product[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+    const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+    const { storeId, userRole } = useAuth();
+    const supabase = createClient();
 
-    const filtered = MOCK_PRODUCTS.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()));
+    const fetchProducts = useCallback(async () => {
+        if (!storeId) return;
+        setIsLoading(true);
+        const { data, error } = await supabase
+            .from('products')
+            .select('*')
+            .eq('store_id', storeId)
+            .order('name');
+
+        if (error) {
+            console.error('Error fetching products:', error);
+        } else if (data) {
+            setProducts(data);
+        }
+        setIsLoading(false);
+    }, [storeId, supabase]);
+
+    useEffect(() => {
+        fetchProducts();
+    }, [fetchProducts]);
+
+    const handleNewProduct = () => {
+        setEditingProduct(null);
+        setIsModalOpen(true);
+    };
+
+    const handleEditProduct = (product: Product) => {
+        setEditingProduct(product);
+        setIsModalOpen(true);
+    };
+
+    const handleDeleteProduct = async (id: string, name: string) => {
+        if (window.confirm(`¿Estás seguro de que quieres eliminar "${name}"? Esta acción no se puede deshacer.`)) {
+            const { error } = await supabase.from('products').delete().eq('id', id);
+            if (error) {
+                console.error('Error deleting product:', error);
+                alert('No se pudo eliminar el producto.');
+            } else {
+                fetchProducts();
+            }
+        }
+    };
+
+    const filtered = products.filter(p =>
+        p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (p.sku && p.sku.toLowerCase().includes(searchTerm.toLowerCase()))
+    );
 
     return (
         <div className="h-full w-full overflow-y-auto bg-slate-950 font-sans custom-scrollbar">
@@ -26,14 +75,22 @@ export default function ProductsPage() {
                     </div>
 
                     <div className="flex items-center gap-3">
-                        <button className="flex items-center gap-2 bg-slate-900 border border-slate-800 shadow-sm px-5 py-2.5 rounded-xl text-slate-300 font-semibold hover:bg-slate-800 transition-colors">
+                        <button
+                            onClick={() => setIsImportModalOpen(true)}
+                            className="flex items-center gap-2 bg-slate-900 border border-slate-800 shadow-sm px-5 py-2.5 rounded-xl text-slate-300 font-semibold hover:bg-slate-800 transition-colors"
+                        >
                             <Upload size={18} className="text-slate-400" />
                             Importar CSV
                         </button>
-                        <button className="flex items-center gap-2 bg-primary hover:bg-blue-600 text-white px-6 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-primary/20">
-                            <Plus size={18} />
-                            Nuevo Producto
-                        </button>
+                        {userRole === 'admin' && (
+                            <button
+                                onClick={handleNewProduct}
+                                className="flex items-center gap-2 bg-primary hover:bg-blue-600 text-white px-6 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-primary/20"
+                            >
+                                <Plus size={18} />
+                                Nuevo Producto
+                            </button>
+                        )}
                     </div>
                 </div>
 
@@ -66,55 +123,77 @@ export default function ProductsPage() {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-800/50">
-                                {filtered.map((product) => {
-                                    const isLow = product.stock <= (product.minStock || 0);
-                                    const isOut = product.stock === 0;
-
-                                    return (
-                                        <tr key={product.id} className="hover:bg-slate-800/40 transition-colors group">
-                                            <td className="py-4 px-8">
-                                                <div className="w-12 h-12 rounded-xl shadow-sm overflow-hidden bg-slate-800 border border-slate-700">
-                                                    <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
-                                                </div>
-                                            </td>
-                                            <td className="py-4 px-8 text-slate-400 font-mono text-sm font-semibold">{product.sku}</td>
-                                            <td className="py-4 px-8 font-bold text-slate-200">{product.name}</td>
-                                            <td className="py-4 px-8">
-                                                <span className="bg-slate-800 text-slate-300 border border-slate-700 px-3 py-1 rounded-lg text-xs font-semibold">{product.category}</span>
-                                            </td>
-                                            <td className="py-4 px-8 text-right text-slate-400 font-medium">${product.cost.toLocaleString('es-AR')}</td>
-                                            <td className="py-4 px-8 text-right font-bold text-white">${product.price.toLocaleString('es-AR')}</td>
-                                            <td className="py-4 px-8 text-right">
-                                                <span className={`px-3 py-1 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 border
-                        ${isOut ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : isLow ? 'bg-orange-500/10 text-orange-400 border-orange-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'}
-                      `}>
-                                                    <div className={`w-1.5 h-1.5 rounded-full ${isOut ? 'bg-rose-500' : isLow ? 'bg-orange-500' : 'bg-emerald-500'}`}></div>
-                                                    {product.stock} un.
-                                                </span>
-                                            </td>
-                                            <td className="py-4 px-8 text-center">
-                                                <div className="flex items-center justify-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <button className="p-2 text-slate-400 hover:text-blue-400 hover:bg-slate-800 rounded-lg transition-colors" title="Editar">
-                                                        <Edit2 size={18} />
-                                                    </button>
-                                                    <button className="p-2 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition-colors" title="Eliminar">
-                                                        <Trash2 size={18} />
-                                                    </button>
-                                                    <button className="p-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg transition-colors">
-                                                        <MoreVertical size={18} />
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-
-                                {filtered.length === 0 && (
+                                {isLoading ? (
+                                    <tr>
+                                        <td colSpan={8} className="py-16 text-center">
+                                            <div className="flex flex-col items-center justify-center text-slate-500">
+                                                <Loader2 className="h-8 w-8 animate-spin mb-4 text-primary" />
+                                                <p className="font-medium">Cargando productos...</p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ) : filtered.length === 0 ? (
                                     <tr>
                                         <td colSpan={8} className="py-16 text-center text-slate-500 font-medium">
                                             No se encontraron productos buscando "{searchTerm}"
                                         </td>
                                     </tr>
+                                ) : (
+                                    filtered.map((product) => {
+                                        const isLow = product.current_stock <= (product.min_stock || 0);
+                                        const isOut = product.current_stock === 0;
+
+                                        return (
+                                            <tr key={product.id} className="hover:bg-slate-800/40 transition-colors group">
+                                                <td className="py-4 px-8">
+                                                    <div className="w-12 h-12 rounded-xl shadow-sm overflow-hidden bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-500">
+                                                        {product.photo_url ? (
+                                                            <img src={product.photo_url} alt={product.name} className="w-full h-full object-cover" />
+                                                        ) : (
+                                                            <span className="text-xs font-semibold">Sin img</span>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                                <td className="py-4 px-8 text-slate-400 font-mono text-sm font-semibold">{product.sku || '-'}</td>
+                                                <td className="py-4 px-8 font-bold text-slate-200">{product.name}</td>
+                                                <td className="py-4 px-8">
+                                                    <span className="bg-slate-800 text-slate-300 border border-slate-700 px-3 py-1 rounded-lg text-xs font-semibold">{product.category}</span>
+                                                </td>
+                                                <td className="py-4 px-8 text-right text-slate-400 font-medium">${Number(product.cost_price).toLocaleString('es-AR')}</td>
+                                                <td className="py-4 px-8 text-right font-bold text-white">${Number(product.sale_price).toLocaleString('es-AR')}</td>
+                                                <td className="py-4 px-8 text-right">
+                                                    <span className={`px-3 py-1 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 border
+                                                        ${isOut ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : isLow ? 'bg-orange-500/10 text-orange-400 border-orange-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'}
+                                                    `}>
+                                                        <div className={`w-1.5 h-1.5 rounded-full ${isOut ? 'bg-rose-500' : isLow ? 'bg-orange-500' : 'bg-emerald-500'}`}></div>
+                                                        {product.current_stock} un.
+                                                    </span>
+                                                </td>
+                                                <td className="py-4 px-8 text-center">
+                                                    <div className="flex items-center justify-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        {userRole === 'admin' && (
+                                                            <>
+                                                                <button
+                                                                    onClick={() => handleEditProduct(product)}
+                                                                    className="p-2 text-slate-400 hover:text-blue-400 hover:bg-slate-800 rounded-lg transition-colors"
+                                                                    title="Editar"
+                                                                >
+                                                                    <Edit2 size={18} />
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => handleDeleteProduct(product.id, product.name)}
+                                                                    className="p-2 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition-colors"
+                                                                    title="Eliminar"
+                                                                >
+                                                                    <Trash2 size={18} />
+                                                                </button>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
                                 )}
                             </tbody>
                         </table>
@@ -136,6 +215,26 @@ export default function ProductsPage() {
                     background: #334155;
                 }
             `}</style>
+
+            {isModalOpen && storeId && (
+                <ProductModal
+                    isOpen={isModalOpen}
+                    onClose={() => setIsModalOpen(false)}
+                    editingProduct={editingProduct}
+                    storeId={storeId}
+                    categories={[]}
+                    onSuccess={fetchProducts}
+                />
+            )}
+
+            {isImportModalOpen && storeId && (
+                <ImportCSVModal
+                    isOpen={isImportModalOpen}
+                    onClose={() => setIsImportModalOpen(false)}
+                    storeId={storeId}
+                    onSuccess={fetchProducts}
+                />
+            )}
         </div>
     );
 }

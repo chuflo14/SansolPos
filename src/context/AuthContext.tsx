@@ -65,6 +65,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const fetchStoreAndRole = async (userId: string) => {
         try {
+            console.log("Fetching store and role for user ID:", userId);
             // Buscar el store_id y rol del usuario en la tabla store_users
             const { data, error } = await supabase
                 .from('store_users')
@@ -72,7 +73,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 .eq('user_id', userId)
                 .single();
 
+            console.log("Supabase response:", { data, error });
+
             if (data) {
+                console.log("Setting storeId:", data.store_id, "and userRole:", data.role);
                 setStoreId(data.store_id);
                 setUserRole(data.role);
             } else {
