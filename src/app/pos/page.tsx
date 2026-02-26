@@ -19,24 +19,25 @@ export default function POSPage() {
     const [selectedCategory, setSelectedCategory] = useState<string>('all');
     const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
 
-    useEffect(() => {
+    const fetchProducts = async () => {
         if (!storeId) return;
+        setIsLoading(true);
+        const { data, error } = await supabase
+            .from('products')
+            .select('*')
+            .eq('store_id', storeId)
+            .order('name');
 
-        const fetchProducts = async () => {
-            setIsLoading(true);
-            const { data, error } = await supabase
-                .from('products')
-                .select('*')
-                .eq('store_id', storeId)
-                .order('name');
+        if (!error && data) {
+            setProducts(data);
+        }
+        setIsLoading(false);
+    };
 
-            if (!error && data) {
-                setProducts(data);
-            }
-            setIsLoading(false);
-        };
-
-        fetchProducts();
+    useEffect(() => {
+        if (storeId) {
+            fetchProducts();
+        }
     }, [storeId, supabase]);
 
     const categories = useMemo(() => {
@@ -53,6 +54,7 @@ export default function POSPage() {
         setIsCheckoutOpen(false);
         setCart([]); // Reset cart for the next sale
         setSearchTerm('');
+        fetchProducts(); // Refresh stock immediately after a sale
     };
 
     const addToCart = (product: Product) => {
@@ -103,8 +105,8 @@ export default function POSPage() {
         <div className="flex h-full bg-slate-950 font-sans custom-scrollbar text-slate-200">
             {/* Products Section */}
             <div className="flex-1 p-6 lg:p-8 flex flex-col h-full overflow-hidden">
-                <div className="flex flex-col gap-6 mb-8">
-                    <div className="relative flex-1 max-w-full">
+                <div className="flex flex-col sm:flex-row gap-4 mb-8">
+                    <div className="relative flex-1">
                         <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500" size={24} />
                         <input
                             type="text"
@@ -114,29 +116,21 @@ export default function POSPage() {
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
                     </div>
-                    {/* Categories Filter */}
-                    <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
-                        <button
-                            onClick={() => setSelectedCategory('all')}
-                            className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold whitespace-nowrap shadow-sm border transition-colors ${selectedCategory === 'all'
-                                    ? 'bg-primary text-white shadow-primary/20 border-transparent'
-                                    : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800 hover:border-slate-700'
-                                }`}
+                    {/* Category Dropdown */}
+                    <div className="w-full sm:w-64 shrink-0 relative">
+                        <select
+                            value={selectedCategory}
+                            onChange={(e) => setSelectedCategory(e.target.value)}
+                            className="w-full h-full min-h-[60px] px-6 py-4 rounded-2xl bg-slate-900 border border-slate-800 text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-lg text-lg font-medium transition-all appearance-none cursor-pointer"
                         >
-                            Todos
-                        </button>
-                        {categories.map(category => (
-                            <button
-                                key={category}
-                                onClick={() => setSelectedCategory(category)}
-                                className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold whitespace-nowrap shadow-sm border transition-colors ${selectedCategory === category
-                                        ? 'bg-primary text-white shadow-primary/20 border-transparent'
-                                        : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800 hover:border-slate-700'
-                                    }`}
-                            >
-                                {category}
-                            </button>
-                        ))}
+                            <option value="all">Todas las categorías</option>
+                            {categories.map(category => (
+                                <option key={category} value={category}>{category}</option>
+                            ))}
+                        </select>
+                        <div className="absolute right-5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
+                        </div>
                     </div>
                 </div>
 

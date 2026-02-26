@@ -10,6 +10,7 @@ import { ImportCSVModal } from '@/components/products/ImportCSVModal';
 export default function ProductsPage() {
     const [searchTerm, setSearchTerm] = useState('');
     const [products, setProducts] = useState<Product[]>([]);
+    const [categories, setCategories] = useState<string[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -31,6 +32,19 @@ export default function ProductsPage() {
         } else if (data) {
             setProducts(data);
         }
+
+        const { data: catData, error: catError } = await supabase
+            .from('categories')
+            .select('name')
+            .eq('store_id', storeId)
+            .order('name');
+
+        if (catError) {
+            console.error('Error fetching categories:', catError);
+        } else if (catData) {
+            setCategories(catData.map(c => c.name));
+        }
+
         setIsLoading(false);
     }, [storeId, supabase]);
 
@@ -222,7 +236,7 @@ export default function ProductsPage() {
                     onClose={() => setIsModalOpen(false)}
                     editingProduct={editingProduct}
                     storeId={storeId}
-                    categories={[]}
+                    categories={categories}
                     onSuccess={fetchProducts}
                 />
             )}

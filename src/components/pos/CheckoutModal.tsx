@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { X, CheckCircle, Printer, MessageCircle } from 'lucide-react';
 import { Receipt, ReceiptData } from '@/components/shared/Receipt';
+import { useAuth } from '@/context/AuthContext';
+import { createClient } from '@/lib/supabase/client';
 
 export function CheckoutModal({
     cart,
@@ -19,15 +21,85 @@ export function CheckoutModal({
     const [paymentMethod, setPaymentMethod] = useState('');
     const [phone, setPhone] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
+    const [saleId, setSaleId] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(null);
 
-    const handleConfirm = () => {
+    const { storeId, user } = useAuth();
+    const supabase = createClient();
+
+    const handleConfirm = async () => {
+        if (!storeId || !user) {
+            setError('Sesión no válida o no hay tienda seleccionada.');
+            return;
+        }
+
         setIsProcessing(true);
-        // Simulate API call to save sale and reduce stock
-        setTimeout(() => {
-            setIsProcessing(false);
+        setError(null);
+
+        try {
+            // 1. Create Sale
+            const { data: saleData, error: saleError } = await supabase
+                .from('sales')
+                .insert([{
+                    store_id: storeId,
+                    cashier_id: user.id,
+                    total,
+                    payment_method: paymentMethod,
+                    customer_phone: phone || null,
+                    status: 'COMPLETED'
+                }])
+                .select('id')
+                .single();
+
+            if (saleError) throw new Error(`Error al crear la venta: ${saleError.message}`);
+            const newSaleId = saleData.id;
+            setSaleId(newSaleId);
+
+            // 2. Prepare Items and Stock Movements
+            const saleItems = cart.map(c => ({
+                sale_id: newSaleId,
+                product_id: c.product.id,
+                name: c.product.name,
+                quantity: c.quantity,
+                unit_price: c.product.sale_price,
+                subtotal: c.product.sale_price * c.quantity
+            }));
+
+            const stockMovements = cart.map(c => ({
+                store_id: storeId,
+                product_id: c.product.id,
+                quantity: -c.quantity, // Negative for sales
+                type: 'SALE',
+                description: `Venta #${newSaleId.split('-')[0]}`
+            }));
+
+            // 3. Insert Sale Items
+            const { error: itemsError } = await supabase.from('sale_items').insert(saleItems);
+            if (itemsError) throw new Error(`Error al guardar los items: ${itemsError.message}`);
+
+            // 4. Insert Stock Movements
+            const { error: stockMovError } = await supabase.from('stock_movements').insert(stockMovements);
+            if (stockMovError) throw new Error(`Error al registrar el movimiento de stock: ${stockMovError.message}`);
+
+            // 5. Update Product Stock (We have to do it iteratively since Supabase JS doesn't have bulk UPDATE from an array out of the box easily, but we can do it via individual updates or an RPC. Let's do individual promises for simplicity here given it's a POS cart)
+            await Promise.all(cart.map(async (c) => {
+                const { error: updateError } = await supabase
+                    .from('products')
+                    .update({ current_stock: c.product.current_stock - c.quantity })
+                    .eq('id', c.product.id)
+                    .eq('store_id', storeId);
+
+                if (updateError) console.error(`Failed to update stock for product ${c.product.id}:`, updateError);
+            }));
+
             setStep(2);
             onConfirm();
-        }, 1000);
+        } catch (err: any) {
+            console.error('Checkout error:', err);
+            setError(err.message || 'Error inesperado al procesar la venta.');
+        } finally {
+            setIsProcessing(false);
+        }
     };
 
     const receiptData: ReceiptData = {
@@ -36,12 +108,12 @@ export function CheckoutModal({
         cuit: "30-12345678-9",
         address: "Calle Falsa 123",
         date: new Date().toISOString(),
-        receiptNumber: "0001-00000023",
+        receiptNumber: saleId ? saleId.split('-')[0].toUpperCase() : "0000-00000000",
         items: cart.map(c => ({
             name: c.product.name,
             quantity: c.quantity,
-            unit_price: c.product.price,
-            subtotal: c.product.price * c.quantity
+            unit_price: c.product.sale_price,
+            subtotal: c.product.sale_price * c.quantity
         })),
         total,
         paymentMethod,
@@ -112,6 +184,12 @@ export function CheckoutModal({
                                     <div className="text-6xl font-black text-white mt-3 drop-shadow-md">${total.toLocaleString('es-AR')}</div>
                                 </div>
                             </div>
+
+                            {error && (
+                                <div className="p-4 bg-rose-500/10 border border-rose-500/20 text-rose-400 font-bold rounded-xl text-center shadow-inner">
+                                    {error}
+                                </div>
+                            )}
                         </div>
                     ) : (
                         <div className="flex flex-col items-center py-4">

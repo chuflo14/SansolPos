@@ -161,6 +161,16 @@ export function ProductModal({ isOpen, onClose, editingProduct, storeId, categor
                 if (dbError) throw dbError;
             }
 
+            // check if the category is new, if so add it to 'categories' table
+            if (formData.category && !categories.includes(formData.category)) {
+                const { error: catError } = await supabase
+                    .from('categories')
+                    .insert([{ store_id: storeId, name: formData.category }]);
+                if (catError && !catError.message.includes('duplicate key value')) {
+                    console.error('Error auto-creating category:', catError);
+                }
+            }
+
             onSuccess();
             onClose();
         } catch (err: any) {
@@ -242,28 +252,20 @@ export function ProductModal({ isOpen, onClose, editingProduct, storeId, categor
 
                         <div className="space-y-2 text-left">
                             <label className="text-sm font-medium text-slate-300">Categoría *</label>
-                            {categories.length > 0 ? (
-                                <select
-                                    required
-                                    value={formData.category}
-                                    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-blue-500 transition-colors appearance-none"
-                                >
-                                    <option value="" disabled>Selecciona una categoría</option>
-                                    {categories.map(cat => (
-                                        <option key={cat} value={cat}>{cat}</option>
-                                    ))}
-                                </select>
-                            ) : (
-                                <input
-                                    required
-                                    type="text"
-                                    value={formData.category}
-                                    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-blue-500 transition-colors"
-                                    placeholder="Ej: Lácteos"
-                                />
-                            )}
+                            <input
+                                required
+                                type="text"
+                                list="category-list"
+                                value={formData.category}
+                                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-blue-500 transition-colors"
+                                placeholder="Ej: Lácteos"
+                            />
+                            <datalist id="category-list">
+                                {categories.map(cat => (
+                                    <option key={cat} value={cat} />
+                                ))}
+                            </datalist>
                         </div>
 
                         <div className="space-y-2 text-left">
