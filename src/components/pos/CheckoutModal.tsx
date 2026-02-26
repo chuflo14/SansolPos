@@ -21,11 +21,41 @@ export function CheckoutModal({
     const [paymentMethod, setPaymentMethod] = useState('');
     const [phone, setPhone] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
+    const [isSharingWhatsApp, setIsSharingWhatsApp] = useState(false);
+    const [shareNotice, setShareNotice] = useState<string | null>(null);
     const [saleId, setSaleId] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
 
     const { storeId, user } = useAuth();
     const supabase = createClient();
+
+    const withTimeout = async <T,>(task: () => PromiseLike<T>, step: string, timeoutMs = 20000): Promise<T> => {
+        let timer: ReturnType<typeof setTimeout> | null = null;
+
+        try {
+            return await Promise.race<T>([
+                Promise.resolve().then(task),
+                new Promise<T>((_, reject) => {
+                    timer = setTimeout(() => {
+                        reject(new Error(`Timeout al ${step}. Verifica la conexión con Supabase.`));
+                    }, timeoutMs);
+                })
+            ]);
+        } finally {
+            if (timer) clearTimeout(timer);
+        }
+    };
+
+    const normalizePhoneForWhatsApp = (value: string) => {
+        const digits = value.replace(/[^0-9]/g, '');
+        if (!digits) return '';
+
+        if (digits.startsWith('00')) return digits.slice(2);
+        if (digits.startsWith('54')) return digits;
+        if (digits.length === 10) return `549${digits}`; // AR local mobile fallback
+        if (digits.length === 11 && digits.startsWith('0')) return `54${digits.slice(1)}`;
+        return digits;
+    };
 
     const handleConfirm = async () => {
         if (!storeId || !user) {
@@ -37,66 +67,47 @@ export function CheckoutModal({
         setError(null);
 
         try {
-            // 1. Create Sale
-            const { data: saleData, error: saleError } = await supabase
-                .from('sales')
-                .insert([{
-                    store_id: storeId,
-                    cashier_id: user.id,
-                    total,
-                    payment_method: paymentMethod,
-                    customer_phone: phone || null,
-                    status: 'COMPLETED'
-                }])
-                .select('id')
-                .single();
+            const response = await withTimeout(
+                () => fetch('/api/checkout', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        storeId,
+                        total,
+                        paymentMethod,
+                        phone,
+                        cart
+                    })
+                }),
+                'crear la venta',
+                30000
+            );
 
-            if (saleError) throw new Error(`Error al crear la venta: ${saleError.message}`);
-            const newSaleId = saleData.id;
-            setSaleId(newSaleId);
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(payload?.error || 'No se pudo procesar la venta.');
+            }
 
-            // 2. Prepare Items and Stock Movements
-            const saleItems = cart.map(c => ({
-                sale_id: newSaleId,
-                product_id: c.product.id,
-                name: c.product.name,
-                quantity: c.quantity,
-                unit_price: c.product.sale_price,
-                subtotal: c.product.sale_price * c.quantity
-            }));
+            const createdSaleId = payload?.saleId as string | undefined;
+            if (!createdSaleId) {
+                throw new Error('La venta se creó sin identificador.');
+            }
 
-            const stockMovements = cart.map(c => ({
-                store_id: storeId,
-                product_id: c.product.id,
-                quantity: -c.quantity, // Negative for sales
-                type: 'SALE',
-                description: `Venta #${newSaleId.split('-')[0]}`
-            }));
-
-            // 3. Insert Sale Items
-            const { error: itemsError } = await supabase.from('sale_items').insert(saleItems);
-            if (itemsError) throw new Error(`Error al guardar los items: ${itemsError.message}`);
-
-            // 4. Insert Stock Movements
-            const { error: stockMovError } = await supabase.from('stock_movements').insert(stockMovements);
-            if (stockMovError) throw new Error(`Error al registrar el movimiento de stock: ${stockMovError.message}`);
-
-            // 5. Update Product Stock (We have to do it iteratively since Supabase JS doesn't have bulk UPDATE from an array out of the box easily, but we can do it via individual updates or an RPC. Let's do individual promises for simplicity here given it's a POS cart)
-            await Promise.all(cart.map(async (c) => {
-                const { error: updateError } = await supabase
-                    .from('products')
-                    .update({ current_stock: c.product.current_stock - c.quantity })
-                    .eq('id', c.product.id)
-                    .eq('store_id', storeId);
-
-                if (updateError) console.error(`Failed to update stock for product ${c.product.id}:`, updateError);
-            }));
+            setSaleId(createdSaleId);
 
             setStep(2);
             onConfirm();
         } catch (err: any) {
             console.error('Checkout error:', err);
-            setError(err.message || 'Error inesperado al procesar la venta.');
+            if (err?.message?.includes('Timeout')) {
+                setError(`${err.message} Reintenta en unos segundos.`);
+            } else if (err?.message?.includes('Failed to fetch')) {
+                setError('No se pudo conectar al servidor. Revisa internet y la URL de Supabase.');
+            } else {
+                setError(err.message || 'Error inesperado al procesar la venta.');
+            }
         } finally {
             setIsProcessing(false);
         }
@@ -122,10 +133,285 @@ export function CheckoutModal({
         legalFooter: "COMPROBANTE NO VÁLIDO COMO FACTURA (En esta etapa)"
     };
 
-    const shareWhatsApp = () => {
+    const buildWhatsAppReceiptText = (receiptUrl?: string) => {
+        const lines = [
+            '*COMPROBANTE DE VENTA*',
+            `${receiptData.storeName}`,
+            `Nro: ${receiptData.receiptNumber}`,
+            `Fecha: ${new Date(receiptData.date).toLocaleString('es-AR')}`,
+            '------------------------',
+        ];
+
+        receiptData.items.forEach((item) => {
+            lines.push(`${item.quantity}x ${item.name} - $${item.subtotal.toLocaleString('es-AR')}`);
+        });
+
+        lines.push('------------------------');
+        lines.push(`*Total: $${receiptData.total.toLocaleString('es-AR')}*`);
+        lines.push(`Medio de pago: ${receiptData.paymentMethod}`);
+
+        if (receiptData.customerPhone) {
+            lines.push(`Cliente: ${receiptData.customerPhone}`);
+        }
+
+        if (receiptUrl) {
+            lines.push('');
+            lines.push(`Comprobante: ${receiptUrl}`);
+        }
+
+        lines.push('');
+        lines.push('Gracias por tu compra.');
+
+        return lines.join('\n');
+    };
+
+    const generateReceiptImageBlob = async (): Promise<Blob> => {
+        const canvas = document.createElement('canvas');
+        const width = 900;
+        const headerHeight = 230;
+        const itemsHeight = receiptData.items.length * 42;
+        const footerHeight = 240;
+        const height = headerHeight + itemsHeight + footerHeight;
+
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            throw new Error('No se pudo generar la imagen del comprobante.');
+        }
+
+        const margin = 36;
+        let y = margin;
+
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, width, height);
+        ctx.fillStyle = '#111827';
+        ctx.strokeStyle = '#e5e7eb';
+        ctx.lineWidth = 2;
+
+        ctx.font = 'bold 34px Arial';
+        ctx.fillText(receiptData.storeName, margin, y);
+        y += 44;
+
+        ctx.font = '22px Arial';
+        ctx.fillText(receiptData.businessName, margin, y);
+        y += 34;
+        ctx.fillText(`CUIT: ${receiptData.cuit}`, margin, y);
+        y += 34;
+        ctx.fillText(`Fecha: ${new Date(receiptData.date).toLocaleString('es-AR')}`, margin, y);
+        y += 34;
+        ctx.fillText(`Comprobante: ${receiptData.receiptNumber}`, margin, y);
+        y += 24;
+
+        ctx.beginPath();
+        ctx.moveTo(margin, y);
+        ctx.lineTo(width - margin, y);
+        ctx.stroke();
+        y += 30;
+
+        ctx.font = 'bold 20px Arial';
+        ctx.fillText('Detalle', margin, y);
+        y += 30;
+
+        ctx.font = '18px Arial';
+        receiptData.items.forEach((item) => {
+            const subtotal = `$${item.subtotal.toLocaleString('es-AR')}`;
+            const itemText = `${item.quantity}x ${item.name}`;
+            const maxItemText = itemText.length > 48 ? `${itemText.slice(0, 45)}...` : itemText;
+
+            ctx.fillText(maxItemText, margin, y);
+            ctx.textAlign = 'right';
+            ctx.fillText(subtotal, width - margin, y);
+            ctx.textAlign = 'left';
+            y += 36;
+        });
+
+        y += 4;
+        ctx.beginPath();
+        ctx.moveTo(margin, y);
+        ctx.lineTo(width - margin, y);
+        ctx.stroke();
+        y += 44;
+
+        ctx.font = 'bold 30px Arial';
+        ctx.fillText(`TOTAL: $${receiptData.total.toLocaleString('es-AR')}`, margin, y);
+        y += 42;
+
+        ctx.font = '20px Arial';
+        ctx.fillText(`Pago: ${receiptData.paymentMethod}`, margin, y);
+        y += 34;
+
+        if (receiptData.customerPhone) {
+            ctx.fillText(`Cliente: ${receiptData.customerPhone}`, margin, y);
+            y += 34;
+        }
+
+        ctx.font = '18px Arial';
+        ctx.fillStyle = '#374151';
+        ctx.fillText(receiptData.legalFooter, margin, y);
+
+        const blob = await new Promise<Blob | null>((resolve) => {
+            canvas.toBlob((generatedBlob) => resolve(generatedBlob), 'image/png');
+        });
+
+        if (!blob) {
+            throw new Error('No se pudo exportar el comprobante.');
+        }
+
+        return blob;
+    };
+
+    const blobToBase64 = async (blob: Blob): Promise<string> => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                const result = reader.result;
+                if (typeof result !== 'string') {
+                    reject(new Error('No se pudo codificar el comprobante.'));
+                    return;
+                }
+
+                const base64 = result.split(',')[1];
+                if (!base64) {
+                    reject(new Error('No se pudo codificar el comprobante.'));
+                    return;
+                }
+
+                resolve(base64);
+            };
+            reader.onerror = () => reject(new Error('No se pudo codificar el comprobante.'));
+            reader.readAsDataURL(blob);
+        });
+    };
+
+    const sendReceiptViaCloud = async ({
+        to,
+        message,
+        receiptUrl,
+        receiptBase64,
+        receiptMimeType
+    }: {
+        to: string;
+        message: string;
+        receiptUrl?: string;
+        receiptBase64: string;
+        receiptMimeType: string;
+    }) => {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 20000);
+
+        try {
+            const response = await fetch('/api/whatsapp/send-receipt', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                signal: controller.signal,
+                body: JSON.stringify({
+                    to,
+                    message,
+                    receiptUrl,
+                    receiptBase64,
+                    receiptMimeType
+                })
+            });
+
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw payload;
+            }
+
+            return payload;
+        } finally {
+            clearTimeout(timeout);
+        }
+    };
+
+    const uploadReceiptImageAndGetUrl = async (receiptBlob: Blob): Promise<string | undefined> => {
+        if (!storeId) return undefined;
+
+        const filePath = `${storeId}/receipts/${Date.now()}_${saleId ?? 'ticket'}.png`;
+        const { error: uploadError } = await supabase.storage
+            .from('products')
+            .upload(filePath, receiptBlob, { contentType: 'image/png' });
+
+        if (uploadError) {
+            console.warn('No se pudo subir el comprobante a storage:', uploadError.message);
+            return undefined;
+        }
+
+        const { data } = supabase.storage.from('products').getPublicUrl(filePath);
+        const receiptUrl = data.publicUrl;
+
+        if (saleId) {
+            const { error: updateError } = await supabase
+                .from('sales')
+                .update({ receipt_url: receiptUrl })
+                .eq('id', saleId)
+                .eq('store_id', storeId);
+            if (updateError) {
+                console.warn('No se pudo guardar receipt_url en sale:', updateError.message);
+            }
+        }
+
+        return receiptUrl;
+    };
+
+    const shareWhatsApp = async () => {
         if (!phone) return;
-        const text = `Hola! Gracias por tu compra en SANSOL. Total: $${total}. Medio de pago: ${paymentMethod}.`;
-        window.open(`https://wa.me/${phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(text)}`, '_blank');
+
+        const sanitizedPhone = normalizePhoneForWhatsApp(phone);
+        if (!sanitizedPhone) {
+            setError('Número de teléfono inválido para enviar por WhatsApp.');
+            return;
+        }
+
+        setIsSharingWhatsApp(true);
+        setError(null);
+        setShareNotice(null);
+
+        try {
+            const receiptBlob = await generateReceiptImageBlob();
+            const receiptBase64 = await blobToBase64(receiptBlob);
+            const receiptUrl = await uploadReceiptImageAndGetUrl(receiptBlob);
+            const text = buildWhatsAppReceiptText(receiptUrl);
+            await sendReceiptViaCloud({
+                to: sanitizedPhone,
+                message: text,
+                receiptUrl,
+                receiptBase64,
+                receiptMimeType: 'image/png'
+            });
+            setShareNotice('Comprobante enviado por WhatsApp.');
+        } catch (shareError: any) {
+            if (shareError?.name === 'AbortError') {
+                setError('Tiempo de espera agotado al enviar por WhatsApp Cloud.');
+                return;
+            }
+
+            if (shareError?.code === 'WHATSAPP_CLOUD_NOT_CONFIGURED') {
+                const fallbackText = buildWhatsAppReceiptText();
+                window.open(`https://wa.me/${sanitizedPhone}?text=${encodeURIComponent(fallbackText)}`, '_blank');
+                setShareNotice('WhatsApp Cloud no está configurado. Se abrió WhatsApp Web como fallback.');
+                return;
+            }
+
+            if (shareError?.code === 'WHATSAPP_AUTH_ERROR') {
+                setError('Meta devolvió Authentication Error. El token de WhatsApp Cloud está inválido o vencido. Genera uno nuevo y reinicia el servidor.');
+                return;
+            }
+
+            const fallbackText = buildWhatsAppReceiptText();
+            window.open(`https://wa.me/${sanitizedPhone}?text=${encodeURIComponent(fallbackText)}`, '_blank');
+            setError(shareError?.error || shareError?.message || 'No se pudo compartir por Cloud. Se abrió WhatsApp Web como alternativa.');
+        } finally {
+            setIsSharingWhatsApp(false);
+        }
+    };
+
+    const handlePrint = () => {
+        window.print();
     };
 
     return (
@@ -167,7 +453,7 @@ export function CheckoutModal({
                                 <h3 className="text-lg font-bold text-white mb-4">2. Teléfono del Cliente <span className="text-slate-500 font-medium text-sm ml-2">(Opcional)</span></h3>
                                 <input
                                     type="tel"
-                                    placeholder="Ej: 1123456789"
+                                    placeholder="Ej: 5491123456789"
                                     className="w-full p-4 bg-slate-900/50 border border-slate-800 rounded-xl focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none text-white font-medium placeholder-slate-600 transition-all shadow-inner"
                                     value={phone}
                                     onChange={e => setPhone(e.target.value)}
@@ -202,27 +488,35 @@ export function CheckoutModal({
 
                             <div className="w-full max-w-sm border border-slate-800 rounded-2xl p-4 bg-slate-950 mb-10 flex justify-center shadow-inner relative overflow-hidden">
                                 {/* Previsualización del Ticket - se mantiene fondo blanco original del receipt por ser termico */}
-                                <div className="scale-[0.85] origin-top bg-white p-2 rounded relative z-10 shadow-lg">
+                                <div id="receipt-print-area" className="scale-[0.85] origin-top bg-white p-2 rounded relative z-10 shadow-lg">
                                     <Receipt data={receiptData} format="thermal" />
                                 </div>
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-md">
-                                <button className="flex items-center justify-center gap-3 py-4 bg-slate-800 text-white rounded-xl font-bold hover:bg-slate-700 hover:shadow-lg transition-all border border-slate-700">
+                                <button
+                                    onClick={handlePrint}
+                                    className="flex items-center justify-center gap-3 py-4 bg-slate-800 text-white rounded-xl font-bold hover:bg-slate-700 hover:shadow-lg transition-all border border-slate-700"
+                                >
                                     <Printer size={20} />
-                                    Imprimir
+                                    Imprimir / PDF
                                 </button>
                                 <button
-                                    disabled={!phone}
+                                    disabled={!phone || isSharingWhatsApp}
                                     onClick={shareWhatsApp}
                                     className={`flex items-center justify-center gap-3 py-4 rounded-xl font-bold transition-all border
-                                        ${phone ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500 hover:text-white hover:shadow-[0_0_20px_rgba(52,211,153,0.3)]' : 'bg-slate-800/50 text-slate-600 border-slate-800 cursor-not-allowed'}
+                                        ${phone && !isSharingWhatsApp ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500 hover:text-white hover:shadow-[0_0_20px_rgba(52,211,153,0.3)]' : 'bg-slate-800/50 text-slate-600 border-slate-800 cursor-not-allowed'}
                                     `}
                                 >
                                     <MessageCircle size={20} />
-                                    WhatsApp
+                                    {isSharingWhatsApp ? 'Enviando...' : 'WhatsApp'}
                                 </button>
                             </div>
+                            {(error || shareNotice) && (
+                                <div className={`mt-4 w-full max-w-md p-3 rounded-xl text-sm font-semibold text-center border ${error ? 'bg-rose-500/10 text-rose-300 border-rose-500/30' : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'}`}>
+                                    {error || shareNotice}
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
@@ -254,6 +548,29 @@ export function CheckoutModal({
                     </div>
                 )}
             </div>
+            <style jsx global>{`
+                @media print {
+                    body * {
+                        visibility: hidden !important;
+                    }
+
+                    #receipt-print-area,
+                    #receipt-print-area * {
+                        visibility: visible !important;
+                    }
+
+                    #receipt-print-area {
+                        position: fixed;
+                        left: 0;
+                        top: 0;
+                        width: 80mm;
+                        margin: 0;
+                        padding: 0;
+                        transform: none !important;
+                        box-shadow: none !important;
+                    }
+                }
+            `}</style>
         </div>
     );
 }

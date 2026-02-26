@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { ShoppingCart, Search, Receipt, Loader2, Image as ImageIcon } from 'lucide-react';
+import { ShoppingCart, Search, Receipt, Loader2, Image as ImageIcon, Trash2 } from 'lucide-react';
 import { CheckoutModal } from '@/components/pos/CheckoutModal';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/context/AuthContext';
@@ -220,13 +220,7 @@ export default function POSPage() {
 
                     <div className="flex-1 overflow-auto p-6 lg:p-8 space-y-4 custom-scrollbar">
                         {cart.map((item) => (
-                            <div key={item.product.id} className="flex items-center gap-4 p-4 rounded-2xl border border-slate-800 bg-slate-950/50 shadow-sm relative group hover:border-slate-700 transition-colors">
-                                <button
-                                    onClick={() => removeFromCart(item.product.id)}
-                                    className="absolute -top-2 -right-2 w-7 h-7 bg-rose-500/10 text-rose-400 border border-rose-500/20 rounded-full flex items-center justify-center hover:bg-rose-500 hover:text-white transition-colors opacity-0 group-hover:opacity-100 shadow-lg"
-                                >
-                                    <span className="text-sm font-bold leading-none">×</span>
-                                </button>
+                            <div key={item.product.id} className="flex items-center gap-4 p-4 rounded-2xl border border-slate-800 bg-slate-950/50 shadow-sm transition-colors hover:border-slate-700">
                                 <div className="w-16 h-16 rounded-xl shrink-0 border border-slate-700 bg-slate-800 overflow-hidden flex items-center justify-center">
                                     {item.product.photo_url ? (
                                         <img src={item.product.photo_url} alt={item.product.name} className="w-full h-full object-cover" />
@@ -248,7 +242,16 @@ export default function POSPage() {
                                                 className="w-7 h-7 rounded-md bg-slate-800 flex items-center justify-center text-slate-300 hover:bg-slate-700 hover:text-white transition-colors font-bold"
                                             >+</button>
                                         </div>
-                                        <span className="text-base font-black text-white">${(item.product.sale_price * item.quantity).toLocaleString('es-AR')}</span>
+                                        <div className="flex items-center gap-3">
+                                            <span className="text-base font-black text-white">${(item.product.sale_price * item.quantity).toLocaleString('es-AR')}</span>
+                                            <button
+                                                onClick={() => removeFromCart(item.product.id)}
+                                                className="w-8 h-8 rounded-lg bg-rose-500/10 text-rose-400 border border-rose-500/20 flex items-center justify-center hover:bg-rose-500 hover:text-white transition-colors shadow-sm"
+                                                title="Eliminar producto"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
