@@ -485,7 +485,15 @@ export function CheckoutModal({
                 /131030/.test(rawShareMessage) ||
                 /allowed list/i.test(rawShareMessage)
             ) {
-                setError('Meta rechaza el destinatario: no está permitido en la lista de prueba. Usa formato 549... y vuelve a verificarlo en Prueba de API.');
+                const attempted = Array.isArray(shareError?.details?.attemptedRecipients)
+                    ? shareError.details.attemptedRecipients.filter(Boolean).join(', ')
+                    : '';
+
+                setError(
+                    attempted
+                        ? `Meta rechaza el destinatario en lista de prueba. Intentados: ${attempted}`
+                        : 'Meta rechaza el destinatario: no está permitido en la lista de prueba.'
+                );
                 return;
             }
 
