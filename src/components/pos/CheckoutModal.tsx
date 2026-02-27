@@ -467,7 +467,13 @@ export function CheckoutModal({
                 return;
             }
 
-            if (shareError?.code === 'WHATSAPP_RECIPIENT_NOT_ALLOWED') {
+            const rawShareMessage = `${shareError?.error || shareError?.message || ''}`;
+
+            if (
+                shareError?.code === 'WHATSAPP_RECIPIENT_NOT_ALLOWED' ||
+                /131030/.test(rawShareMessage) ||
+                /allowed list/i.test(rawShareMessage)
+            ) {
                 setError('Meta rechaza el destinatario: no está permitido en la lista de prueba. Usa formato 549... y vuelve a verificarlo en Prueba de API.');
                 return;
             }
