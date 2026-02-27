@@ -335,37 +335,37 @@ export function CheckoutModal({
         to: string;
         message: string;
         receiptUrl?: string;
-        receiptBase64: string;
-        receiptMimeType: string;
+        receiptBase64?: string;
+        receiptMimeType?: string;
     }) => {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 20000);
-
-        try {
-            const response = await fetch('/api/whatsapp/send-receipt', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                signal: controller.signal,
-                body: JSON.stringify({
+        // NOTE: No inner AbortController here — the outer `withTimeout` wrapper
+        // already handles the timeout. A nested controller caused AbortError to
+        // escape the structured catch handlers in shareWhatsApp.
+        const response = await fetch('/api/whatsapp/send-receipt', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
                     to,
                     message,
                     receiptUrl,
                     receiptBase64,
                     receiptMimeType
-                })
-            });
+            })
+        });
 
-            const payload = await response.json().catch(() => ({}));
-            if (!response.ok) {
-                throw payload;
-            }
-
-            return payload;
-        } finally {
-            clearTimeout(timeout);
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            // Convert the API error payload to a real Error so that `.message`,
+            // `.code`, `.details` are accessible in the catch block.
+            const apiError = new Error(payload?.error || 'WhatsApp API error') as any;
+            apiError.code = payload?.code;
+            apiError.details = payload?.details;
+            throw apiError;
         }
+
+        return payload;
     };
 
     const uploadReceiptImageAndGetUrl = async (receiptBlob: Blob): Promise<string | undefined> => {
@@ -419,13 +419,6 @@ export function CheckoutModal({
                 'Reintenta la operación.'
             );
 
-            const receiptBase64 = await withTimeout(
-                () => blobToBase64(receiptBlob),
-                'preparar el comprobante',
-                10000,
-                'Reintenta la operación.'
-            );
-
             let receiptUrl: string | undefined;
             try {
                 receiptUrl = await withTimeout(
@@ -444,9 +437,7 @@ export function CheckoutModal({
                     sendReceiptViaCloud({
                         to: sanitizedPhone,
                         message: text,
-                        receiptUrl,
-                        receiptBase64,
-                        receiptMimeType: 'image/png'
+                        receiptUrl
                     }),
                 'enviar el comprobante por WhatsApp',
                 25000,
@@ -454,12 +445,12 @@ export function CheckoutModal({
             );
             setShareNotice('Comprobante enviado por WhatsApp.');
         } catch (shareError: any) {
-            if (shareError?.name === 'AbortError') {
-                setError('Tiempo de espera agotado al enviar por WhatsApp Cloud.');
-                return;
-            }
-
-            if (shareError?.code === 'WHATSAPP_TIMEOUT' || /Timeout al enviar el comprobante por WhatsApp/i.test(shareError?.message || '')) {
+            // Timeout (either from withTimeout wrapper or inner fetch abort)
+            if (
+                shareError?.name === 'AbortError' ||
+                shareError?.code === 'WHATSAPP_TIMEOUT' ||
+                /Timeout al/i.test(shareError?.message || '')
+            ) {
                 const fallbackText = buildWhatsAppReceiptText();
                 window.open(`https://wa.me/${sanitizedPhone}?text=${encodeURIComponent(fallbackText)}`, '_blank');
                 setError('WhatsApp Cloud tardó demasiado en responder. Se abrió WhatsApp Web como alternativa.');
@@ -474,32 +465,36 @@ export function CheckoutModal({
             }
 
             if (shareError?.code === 'WHATSAPP_AUTH_ERROR') {
-                setError('Meta devolvió Authentication Error. El token de WhatsApp Cloud está inválido o vencido. Genera uno nuevo y reinicia el servidor.');
+                setError('Meta devolvió Authentication Error. El token de WhatsApp Cloud está inválido o vencido. Genera uno nuevo en Meta for Developers y reinicia el servidor.');
                 return;
             }
 
-            const rawShareMessage = `${shareError?.error || shareError?.message || ''}`;
-
-            if (
-                shareError?.code === 'WHATSAPP_RECIPIENT_NOT_ALLOWED' ||
-                /131030/.test(rawShareMessage) ||
-                /allowed list/i.test(rawShareMessage)
-            ) {
+            if (shareError?.code === 'WHATSAPP_RECIPIENT_NOT_ALLOWED') {
                 const attempted = Array.isArray(shareError?.details?.attemptedRecipients)
                     ? shareError.details.attemptedRecipients.filter(Boolean).join(', ')
                     : '';
 
                 setError(
                     attempted
-                        ? `Meta rechaza el destinatario en lista de prueba. Intentados: ${attempted}`
-                        : 'Meta rechaza el destinatario: no está permitido en la lista de prueba.'
+                        ? `⚠️ Número no permitido en cuenta de prueba. Intentados: ${attempted}. Añadilo en Meta for Developers → WhatsApp → Recipients.`
+                        : '⚠️ Número no permitido en la lista de prueba de Meta. Añadilo en Meta for Developers → WhatsApp → Recipients.'
                 );
+                return;
+            }
+
+            if (shareError?.code === 'UNAUTHORIZED') {
+                setError('Sesión expirada. Volvé a iniciar sesión para enviar por WhatsApp.');
+                return;
+            }
+
+            if (shareError?.code === 'INVALID_PHONE_NUMBER') {
+                setError('El número de teléfono ingresado no es válido para WhatsApp.');
                 return;
             }
 
             const fallbackText = buildWhatsAppReceiptText();
             window.open(`https://wa.me/${sanitizedPhone}?text=${encodeURIComponent(fallbackText)}`, '_blank');
-            setError(shareError?.error || shareError?.message || 'No se pudo compartir por Cloud. Se abrió WhatsApp Web como alternativa.');
+            setError(shareError?.message || shareError?.error || 'No se pudo enviar por Cloud. Se abrió WhatsApp Web como alternativa.');
         } finally {
             setIsSharingWhatsApp(false);
         }
