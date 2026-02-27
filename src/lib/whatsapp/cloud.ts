@@ -82,7 +82,8 @@ const buildRecipientCandidates = (phone: string) => {
     if (phone.startsWith('549')) {
         const national = phone.slice(3);
         if (national.length >= 9 && national.length <= 11) {
-            [2, 3, 4].forEach((areaLength) => {
+            // Try the most common AR split first (3-digit area), then alternatives.
+            [3, 2, 4].forEach((areaLength) => {
                 if (national.length > areaLength) {
                     const variant = `54${national.slice(0, areaLength)}15${national.slice(areaLength)}`;
                     candidates.add(variant);
@@ -274,8 +275,12 @@ export async function sendWhatsAppReceipt({
         const metaError = responseData?.error as MetaApiErrorPayload | undefined;
         lastRecipientError = metaError;
 
-        // Retry alternate AR variants only on allow-list mismatch.
-        if (metaError?.code === 131030) {
+        const errorCode = String(metaError?.code ?? '');
+
+        // Retry alternate AR variants on recipient-related errors.
+        // 131030: not in allowed list (sandbox)
+        // 131026: recipient number format invalid for this attempt
+        if (errorCode === '131030' || errorCode === '131026') {
             continue;
         }
 
