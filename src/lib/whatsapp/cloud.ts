@@ -73,6 +73,27 @@ const sanitizePhone = (phone: string) => {
     return digits;
 };
 
+const buildRecipientCandidates = (phone: string) => {
+    const candidates = new Set<string>();
+    candidates.add(phone);
+
+    // Meta test allow-list for AR can be stored as 54 + area + 15 + number.
+    // If normalized input is 549..., try those legacy variants before failing.
+    if (phone.startsWith('549')) {
+        const national = phone.slice(3);
+        if (national.length >= 9 && national.length <= 11) {
+            [2, 3, 4].forEach((areaLength) => {
+                if (national.length > areaLength) {
+                    const variant = `54${national.slice(0, areaLength)}15${national.slice(areaLength)}`;
+                    candidates.add(variant);
+                }
+            });
+        }
+    }
+
+    return Array.from(candidates);
+};
+
 const parseBase64Receipt = (input: string) => {
     const match = input.match(/^data:([^;]+);base64,(.+)$/);
     if (match) {
@@ -223,29 +244,49 @@ export async function sendWhatsAppReceipt({
                 preview_url: false
             }
         };
+    const recipients = buildRecipientCandidates(sanitizedTo);
+    let lastRecipientError: MetaApiErrorPayload | undefined;
 
-    const response = await fetchWithTimeout(
-        endpoint,
-        {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${accessToken}`
+    for (const recipient of recipients) {
+        const response = await fetchWithTimeout(
+            endpoint,
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${accessToken}`
+                },
+                body: JSON.stringify({
+                    ...payload,
+                    to: recipient
+                })
             },
-            body: JSON.stringify(payload)
-        },
-        CLOUD_SEND_TIMEOUT_MS,
-        'send'
-    );
+            CLOUD_SEND_TIMEOUT_MS,
+            'send'
+        );
 
-    const responseData = await response.json().catch(() => ({}));
+        const responseData = await response.json().catch(() => ({}));
 
-    if (!response.ok) {
+        if (response.ok) {
+            return responseData;
+        }
+
+        const metaError = responseData?.error as MetaApiErrorPayload | undefined;
+        lastRecipientError = metaError;
+
+        // Retry alternate AR variants only on allow-list mismatch.
+        if (metaError?.code === 131030) {
+            continue;
+        }
+
         throwMetaApiError(
-            responseData?.error,
+            metaError,
             'WhatsApp Cloud API request failed'
         );
     }
 
-    return responseData;
+    throwMetaApiError(
+        lastRecipientError,
+        'WhatsApp Cloud API request failed'
+    );
 }
