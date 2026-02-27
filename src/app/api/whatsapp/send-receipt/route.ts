@@ -72,6 +72,9 @@ export async function POST(request: Request) {
         } else if (message === 'INVALID_RECEIPT_MEDIA') {
             code = 'INVALID_RECEIPT_MEDIA';
             status = 400;
+        } else if (metaCode === 131030) {
+            code = 'WHATSAPP_RECIPIENT_NOT_ALLOWED';
+            status = 400;
         } else if (internalCode === 'WHATSAPP_TIMEOUT') {
             code = 'WHATSAPP_TIMEOUT';
             status = 504;

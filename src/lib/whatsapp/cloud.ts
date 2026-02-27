@@ -38,7 +38,40 @@ const DEFAULT_GRAPH_API_VERSION = 'v22.0';
 const CLOUD_UPLOAD_TIMEOUT_MS = 20000;
 const CLOUD_SEND_TIMEOUT_MS = 20000;
 
-const sanitizePhone = (phone: string) => phone.replace(/[^0-9]/g, '');
+const sanitizePhone = (phone: string) => {
+    let digits = phone.replace(/[^0-9]/g, '');
+    if (!digits) return '';
+
+    if (digits.startsWith('00')) {
+        digits = digits.slice(2);
+    }
+
+    // Canonicaliza formatos argentinos a E.164 móvil: 549 + area + número.
+    if (digits.startsWith('549')) {
+        return digits;
+    }
+
+    if (digits.startsWith('54')) {
+        let national = digits.slice(2);
+        if (national.startsWith('9')) {
+            return `54${national}`;
+        }
+
+        national = national.replace(/^0/, '').replace(/^(\d{2,4})15/, '$1');
+        return `549${national}`;
+    }
+
+    if (digits.startsWith('0')) {
+        const national = digits.slice(1).replace(/^(\d{2,4})15/, '$1');
+        return `549${national}`;
+    }
+
+    if (digits.length === 10) {
+        return `549${digits}`;
+    }
+
+    return digits;
+};
 
 const parseBase64Receipt = (input: string) => {
     const match = input.match(/^data:([^;]+);base64,(.+)$/);
