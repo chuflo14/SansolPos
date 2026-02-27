@@ -20,6 +20,7 @@ export function CheckoutModal({
     const [step, setStep] = useState(1);
     const [paymentMethod, setPaymentMethod] = useState('');
     const [phone, setPhone] = useState('');
+    const [customerName, setCustomerName] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
     const [isSharingWhatsApp, setIsSharingWhatsApp] = useState(false);
     const [shareNotice, setShareNotice] = useState<string | null>(null);
@@ -110,14 +111,13 @@ export function CheckoutModal({
             const response = await withTimeout(
                 () => fetch('/api/checkout', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         storeId,
                         total,
                         paymentMethod,
                         phone,
+                        customerName,
                         cart
                     })
                 }),
@@ -169,7 +169,8 @@ export function CheckoutModal({
         total,
         paymentMethod,
         customerPhone: phone || undefined,
-        qrUrl: "https://afip.gob.ar/qr", // Will be replaced by real AFIP URL
+        customerName: customerName || undefined,
+        qrUrl: "https://afip.gob.ar/qr",
         legalFooter: "COMPROBANTE NO VÁLIDO COMO FACTURA (En esta etapa)"
     };
 
@@ -190,8 +191,11 @@ export function CheckoutModal({
         lines.push(`*Total: $${receiptData.total.toLocaleString('es-AR')}*`);
         lines.push(`Medio de pago: ${receiptData.paymentMethod}`);
 
+        if (receiptData.customerName) {
+            lines.push(`Cliente: ${receiptData.customerName}`);
+        }
         if (receiptData.customerPhone) {
-            lines.push(`Cliente: ${receiptData.customerPhone}`);
+            lines.push(`Tel: ${receiptData.customerPhone}`);
         }
 
         if (receiptUrl) {
@@ -282,8 +286,12 @@ export function CheckoutModal({
         ctx.fillText(`Pago: ${receiptData.paymentMethod}`, margin, y);
         y += 34;
 
+        if (receiptData.customerName) {
+            ctx.fillText(`Cliente: ${receiptData.customerName}`, margin, y);
+            y += 34;
+        }
         if (receiptData.customerPhone) {
-            ctx.fillText(`Cliente: ${receiptData.customerPhone}`, margin, y);
+            ctx.fillText(`Tel: ${receiptData.customerPhone}`, margin, y);
             y += 34;
         }
 
@@ -347,11 +355,11 @@ export function CheckoutModal({
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                    to,
-                    message,
-                    receiptUrl,
-                    receiptBase64,
-                    receiptMimeType
+                to,
+                message,
+                receiptUrl,
+                receiptBase64,
+                receiptMimeType
             })
         });
 
@@ -540,17 +548,30 @@ export function CheckoutModal({
                             </div>
 
                             <div>
-                                <h3 className="text-lg font-bold text-white mb-4">2. Teléfono del Cliente <span className="text-slate-500 font-medium text-sm ml-2">(Opcional)</span></h3>
-                                <input
-                                    type="tel"
-                                    placeholder="Ej: 5491123456789"
-                                    className="w-full p-4 bg-slate-900/50 border border-slate-800 rounded-xl focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none text-white font-medium placeholder-slate-600 transition-all shadow-inner"
-                                    value={phone}
-                                    onChange={e => setPhone(e.target.value)}
-                                />
-                                <p className="text-sm text-slate-500 mt-3 font-medium flex items-center gap-2">
-                                    Requerido si desea enviar el comprobante por WhatsApp.
-                                </p>
+                                <h3 className="text-lg font-bold text-white mb-4">2. Datos del Cliente <span className="text-slate-500 font-medium text-sm ml-2">(Opcional)</span></h3>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 block">Nombre</label>
+                                        <input
+                                            type="text"
+                                            placeholder="Ej: Juan García"
+                                            className="w-full p-4 bg-slate-900/50 border border-slate-800 rounded-xl focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none text-white font-medium placeholder-slate-600 transition-all shadow-inner"
+                                            value={customerName}
+                                            onChange={e => setCustomerName(e.target.value)}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 block">WhatsApp</label>
+                                        <input
+                                            type="tel"
+                                            placeholder="Ej: 1123456789"
+                                            className="w-full p-4 bg-slate-900/50 border border-slate-800 rounded-xl focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none text-white font-medium placeholder-slate-600 transition-all shadow-inner"
+                                            value={phone}
+                                            onChange={e => setPhone(e.target.value)}
+                                        />
+                                    </div>
+                                </div>
+                                <p className="text-xs text-slate-500 mt-2">El WhatsApp es requerido para enviar el comprobante.</p>
                             </div>
 
                             <div className="bg-slate-800/50 p-6 lg:p-8 rounded-2xl border border-slate-700/50 text-center relative overflow-hidden">

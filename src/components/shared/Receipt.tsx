@@ -18,6 +18,7 @@ export type ReceiptData = {
     items: ReceiptItem[];
     total: number;
     paymentMethod: string;
+    customerName?: string;
     customerPhone?: string;
     qrUrl: string;
     legalFooter: string;
@@ -73,9 +74,14 @@ export function Receipt({ data, format = 'thermal' }: ReceiptProps) {
                 <p className={`${isThermal ? 'text-xs' : 'text-sm'}`}>
                     <strong>Método de Pago:</strong> {data.paymentMethod}
                 </p>
+                {data.customerName && (
+                    <p className={`${isThermal ? 'text-xs' : 'text-sm'}`}>
+                        <strong>Cliente:</strong> {data.customerName}
+                    </p>
+                )}
                 {data.customerPhone && (
                     <p className={`${isThermal ? 'text-xs' : 'text-sm'}`}>
-                        <strong>Cliente:</strong> {data.customerPhone}
+                        <strong>Tel:</strong> {data.customerPhone}
                     </p>
                 )}
             </div>

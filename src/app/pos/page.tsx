@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { ShoppingCart, Search, Receipt, Loader2, Image as ImageIcon, Trash2 } from 'lucide-react';
 import { CheckoutModal } from '@/components/pos/CheckoutModal';
 import { createClient } from '@/lib/supabase/client';
@@ -19,7 +19,9 @@ export default function POSPage() {
     const [selectedCategory, setSelectedCategory] = useState<string>('all');
     const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
 
-    const fetchProducts = async () => {
+    const saleConfirmedCart = useRef<{ product: Product; quantity: number }[] | null>(null);
+
+    const fetchProducts = useCallback(async () => {
         if (!storeId) return;
         setIsLoading(true);
         const { data, error } = await supabase
@@ -32,29 +34,42 @@ export default function POSPage() {
             setProducts(data);
         }
         setIsLoading(false);
-    };
+    }, [storeId, supabase]);
 
     useEffect(() => {
-        if (storeId) {
-            fetchProducts();
-        }
-    }, [storeId, supabase]);
+        if (storeId) fetchProducts();
+    }, [storeId, fetchProducts]);
 
     const categories = useMemo(() => {
         const uniqueCategories = new Set(products.map(p => p.category).filter(Boolean));
         return Array.from(uniqueCategories).sort();
     }, [products]);
 
+    // Apply sold quantities locally to avoid a full refetch (no loading flash)
+    const applyStockLocally = useCallback((soldCart: { product: Product; quantity: number }[]) => {
+        setProducts(prev => prev.map(p => {
+            const sold = soldCart.find(c => c.product.id === p.id);
+            if (!sold) return p;
+            return { ...p, current_stock: Math.max(0, p.current_stock - sold.quantity) };
+        }));
+    }, []);
+
     const handleCheckoutConfirm = () => {
-        // Once confirmed, the modal goes to step 2 (success). We don't clear the cart yet so the receipt can render it.
-        // The cart will be cleared exactly when the modal closes.
+        // Save the cart before it gets cleared, so we can apply stock locally
+        saleConfirmedCart.current = cart;
     };
 
     const handleCloseCheckout = () => {
         setIsCheckoutOpen(false);
-        setCart([]); // Reset cart for the next sale
         setSearchTerm('');
-        fetchProducts(); // Refresh stock immediately after a sale
+
+        if (saleConfirmedCart.current) {
+            // Update stock locally — instant, no spinner
+            applyStockLocally(saleConfirmedCart.current);
+            saleConfirmedCart.current = null;
+        }
+
+        setCart([]); // Reset cart for the next sale
     };
 
     const addToCart = (product: Product) => {
