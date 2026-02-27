@@ -20,6 +20,7 @@ type WhatsAppCloudError = Error & {
     metaType?: string;
     metaSubcode?: number;
     metaTrace?: string;
+    attemptedRecipients?: string[];
 };
 
 const throwMetaApiError = (errorPayload: MetaApiErrorPayload | undefined, fallbackMessage: string) => {
@@ -31,6 +32,20 @@ const throwMetaApiError = (errorPayload: MetaApiErrorPayload | undefined, fallba
     error.metaSubcode = errorPayload?.error_subcode;
     error.metaTrace = errorPayload?.fbtrace_id;
 
+    throw error;
+};
+
+const throwMetaApiErrorWithRecipients = (
+    errorPayload: MetaApiErrorPayload | undefined,
+    fallbackMessage: string,
+    attemptedRecipients: string[]
+) => {
+    const error = new Error(errorPayload?.message || fallbackMessage) as WhatsAppCloudError;
+    error.metaCode = errorPayload?.code;
+    error.metaType = errorPayload?.type;
+    error.metaSubcode = errorPayload?.error_subcode;
+    error.metaTrace = errorPayload?.fbtrace_id;
+    error.attemptedRecipients = attemptedRecipients;
     throw error;
 };
 
@@ -247,8 +262,11 @@ export async function sendWhatsAppReceipt({
         };
     const recipients = buildRecipientCandidates(sanitizedTo);
     let lastRecipientError: MetaApiErrorPayload | undefined;
+    const attemptedRecipients: string[] = [];
 
     for (const recipient of recipients) {
+        attemptedRecipients.push(recipient);
+
         const response = await fetchWithTimeout(
             endpoint,
             {
@@ -284,14 +302,16 @@ export async function sendWhatsAppReceipt({
             continue;
         }
 
-        throwMetaApiError(
+        throwMetaApiErrorWithRecipients(
             metaError,
-            'WhatsApp Cloud API request failed'
+            'WhatsApp Cloud API request failed',
+            attemptedRecipients
         );
     }
 
-    throwMetaApiError(
+    throwMetaApiErrorWithRecipients(
         lastRecipientError,
-        'WhatsApp Cloud API request failed'
+        'WhatsApp Cloud API request failed',
+        attemptedRecipients
     );
 }

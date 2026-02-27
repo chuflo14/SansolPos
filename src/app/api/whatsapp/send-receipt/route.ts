@@ -62,6 +62,7 @@ export async function POST(request: Request) {
         const metaSubcode = error?.metaSubcode as number | undefined;
         const metaTrace = error?.metaTrace as string | undefined;
         const internalCode = error?.code as string | undefined;
+        const attemptedRecipients = error?.attemptedRecipients as string[] | undefined;
 
         let code = 'WHATSAPP_SEND_FAILED';
         let status = 500;
@@ -91,7 +92,8 @@ export async function POST(request: Request) {
                     metaCode,
                     metaType,
                     metaSubcode,
-                    metaTrace
+                    metaTrace,
+                    attemptedRecipients
                 }
             },
             { status }
