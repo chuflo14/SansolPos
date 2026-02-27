@@ -14,14 +14,17 @@ type MetaApiErrorPayload = {
     fbtrace_id?: string;
 };
 
+type WhatsAppCloudError = Error & {
+    code?: string;
+    metaCode?: number;
+    metaType?: string;
+    metaSubcode?: number;
+    metaTrace?: string;
+};
+
 const throwMetaApiError = (errorPayload: MetaApiErrorPayload | undefined, fallbackMessage: string) => {
     const message = errorPayload?.message || fallbackMessage;
-    const error = new Error(message) as Error & {
-        metaCode?: number;
-        metaType?: string;
-        metaSubcode?: number;
-        metaTrace?: string;
-    };
+    const error = new Error(message) as WhatsAppCloudError;
 
     error.metaCode = errorPayload?.code;
     error.metaType = errorPayload?.type;
@@ -32,6 +35,8 @@ const throwMetaApiError = (errorPayload: MetaApiErrorPayload | undefined, fallba
 };
 
 const DEFAULT_GRAPH_API_VERSION = 'v22.0';
+const CLOUD_UPLOAD_TIMEOUT_MS = 20000;
+const CLOUD_SEND_TIMEOUT_MS = 20000;
 
 const sanitizePhone = (phone: string) => phone.replace(/[^0-9]/g, '');
 
@@ -55,6 +60,42 @@ export const hasWhatsAppCloudConfig = () => {
         process.env.WHATSAPP_ACCESS_TOKEN &&
         process.env.WHATSAPP_PHONE_NUMBER_ID
     );
+};
+
+const createTimeoutError = (step: 'upload' | 'send') => {
+    const error = new Error(
+        step === 'upload'
+            ? 'Tiempo de espera agotado al subir el comprobante a WhatsApp Cloud.'
+            : 'Tiempo de espera agotado al enviar el mensaje a WhatsApp Cloud.'
+    ) as WhatsAppCloudError;
+
+    error.code = 'WHATSAPP_TIMEOUT';
+    return error;
+};
+
+const fetchWithTimeout = async (
+    url: string,
+    init: RequestInit,
+    timeoutMs: number,
+    step: 'upload' | 'send'
+) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+        return await fetch(url, {
+            ...init,
+            signal: controller.signal
+        });
+    } catch (error: any) {
+        if (error?.name === 'AbortError') {
+            throw createTimeoutError(step);
+        }
+
+        throw error;
+    } finally {
+        clearTimeout(timeout);
+    }
 };
 
 export async function sendWhatsAppReceipt({
@@ -96,13 +137,18 @@ export async function sendWhatsAppReceipt({
         form.append('messaging_product', 'whatsapp');
         form.append('file', file);
 
-        const uploadResponse = await fetch(`https://graph.facebook.com/${graphApiVersion}/${phoneNumberId}/media`, {
-            method: 'POST',
-            headers: {
-                Authorization: `Bearer ${accessToken}`
+        const uploadResponse = await fetchWithTimeout(
+            `https://graph.facebook.com/${graphApiVersion}/${phoneNumberId}/media`,
+            {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${accessToken}`
+                },
+                body: form
             },
-            body: form
-        });
+            CLOUD_UPLOAD_TIMEOUT_MS,
+            'upload'
+        );
 
         const uploadData = await uploadResponse.json().catch(() => ({}));
         if (!uploadResponse.ok || !uploadData?.id) {
@@ -145,14 +191,19 @@ export async function sendWhatsAppReceipt({
             }
         };
 
-    const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${accessToken}`
+    const response = await fetchWithTimeout(
+        endpoint,
+        {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${accessToken}`
+            },
+            body: JSON.stringify(payload)
         },
-        body: JSON.stringify(payload)
-    });
+        CLOUD_SEND_TIMEOUT_MS,
+        'send'
+    );
 
     const responseData = await response.json().catch(() => ({}));
 

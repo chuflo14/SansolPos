@@ -61,6 +61,7 @@ export async function POST(request: Request) {
         const metaType = error?.metaType as string | undefined;
         const metaSubcode = error?.metaSubcode as number | undefined;
         const metaTrace = error?.metaTrace as string | undefined;
+        const internalCode = error?.code as string | undefined;
 
         let code = 'WHATSAPP_SEND_FAILED';
         let status = 500;
@@ -68,6 +69,12 @@ export async function POST(request: Request) {
         if (message === 'INVALID_PHONE_NUMBER') {
             code = 'INVALID_PHONE_NUMBER';
             status = 400;
+        } else if (message === 'INVALID_RECEIPT_MEDIA') {
+            code = 'INVALID_RECEIPT_MEDIA';
+            status = 400;
+        } else if (internalCode === 'WHATSAPP_TIMEOUT') {
+            code = 'WHATSAPP_TIMEOUT';
+            status = 504;
         } else if (metaCode === 190 || /authentication error/i.test(message) || /oauth/i.test(message)) {
             code = 'WHATSAPP_AUTH_ERROR';
             status = 401;

@@ -29,7 +29,12 @@ export function CheckoutModal({
     const { storeId, user } = useAuth();
     const supabase = createClient();
 
-    const withTimeout = async <T,>(task: () => PromiseLike<T>, step: string, timeoutMs = 20000): Promise<T> => {
+    const withTimeout = async <T,>(
+        task: () => PromiseLike<T>,
+        step: string,
+        timeoutMs = 20000,
+        timeoutHint = 'Verifica la conexión con Supabase.'
+    ): Promise<T> => {
         let timer: ReturnType<typeof setTimeout> | null = null;
 
         try {
@@ -37,7 +42,7 @@ export function CheckoutModal({
                 Promise.resolve().then(task),
                 new Promise<T>((_, reject) => {
                     timer = setTimeout(() => {
-                        reject(new Error(`Timeout al ${step}. Verifica la conexión con Supabase.`));
+                        reject(new Error(`Timeout al ${step}. ${timeoutHint}`));
                     }, timeoutMs);
                 })
             ]);
@@ -372,21 +377,57 @@ export function CheckoutModal({
         setShareNotice(null);
 
         try {
-            const receiptBlob = await generateReceiptImageBlob();
-            const receiptBase64 = await blobToBase64(receiptBlob);
-            const receiptUrl = await uploadReceiptImageAndGetUrl(receiptBlob);
+            const receiptBlob = await withTimeout(
+                () => generateReceiptImageBlob(),
+                'generar el comprobante',
+                10000,
+                'Reintenta la operación.'
+            );
+
+            const receiptBase64 = await withTimeout(
+                () => blobToBase64(receiptBlob),
+                'preparar el comprobante',
+                10000,
+                'Reintenta la operación.'
+            );
+
+            let receiptUrl: string | undefined;
+            try {
+                receiptUrl = await withTimeout(
+                    () => uploadReceiptImageAndGetUrl(receiptBlob),
+                    'subir el comprobante a storage',
+                    12000,
+                    'Se continuará sin URL pública.'
+                );
+            } catch (storageError: any) {
+                console.warn('Storage upload skipped:', storageError?.message || storageError);
+            }
+
             const text = buildWhatsAppReceiptText(receiptUrl);
-            await sendReceiptViaCloud({
-                to: sanitizedPhone,
-                message: text,
-                receiptUrl,
-                receiptBase64,
-                receiptMimeType: 'image/png'
-            });
+            await withTimeout(
+                () =>
+                    sendReceiptViaCloud({
+                        to: sanitizedPhone,
+                        message: text,
+                        receiptUrl,
+                        receiptBase64,
+                        receiptMimeType: 'image/png'
+                    }),
+                'enviar el comprobante por WhatsApp',
+                25000,
+                'WhatsApp Cloud tardó demasiado en responder.'
+            );
             setShareNotice('Comprobante enviado por WhatsApp.');
         } catch (shareError: any) {
             if (shareError?.name === 'AbortError') {
                 setError('Tiempo de espera agotado al enviar por WhatsApp Cloud.');
+                return;
+            }
+
+            if (shareError?.code === 'WHATSAPP_TIMEOUT' || /Timeout al enviar el comprobante por WhatsApp/i.test(shareError?.message || '')) {
+                const fallbackText = buildWhatsAppReceiptText();
+                window.open(`https://wa.me/${sanitizedPhone}?text=${encodeURIComponent(fallbackText)}`, '_blank');
+                setError('WhatsApp Cloud tardó demasiado en responder. Se abrió WhatsApp Web como alternativa.');
                 return;
             }
 
