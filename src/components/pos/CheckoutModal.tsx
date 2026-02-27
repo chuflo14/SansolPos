@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { X, CheckCircle, Printer, MessageCircle } from 'lucide-react';
 import { Receipt, ReceiptData } from '@/components/shared/Receipt';
 import { useAuth } from '@/context/AuthContext';
@@ -28,6 +28,17 @@ export function CheckoutModal({
 
     const { storeId, user } = useAuth();
     const supabase = createClient();
+
+    useEffect(() => {
+        if (!isSharingWhatsApp) return;
+
+        const watchdog = setTimeout(() => {
+            setIsSharingWhatsApp(false);
+            setError((prev) => prev || 'El envío por WhatsApp tardó demasiado. Intenta nuevamente.');
+        }, 45000);
+
+        return () => clearTimeout(watchdog);
+    }, [isSharingWhatsApp]);
 
     const withTimeout = async <T,>(
         task: () => PromiseLike<T>,
