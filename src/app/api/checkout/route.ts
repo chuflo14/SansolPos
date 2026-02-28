@@ -19,6 +19,7 @@ type CheckoutBody = {
     customerName?: string;
     cart?: CheckoutItem[];
     cashSessionId?: string | null;
+    idempotencyKey?: string | null;   // FASE2: UUID para evitar doble venta
 };
 
 export async function POST(request: Request) {
@@ -41,6 +42,7 @@ export async function POST(request: Request) {
         const customerName = body.customerName?.trim() ?? '';
         const cart = Array.isArray(body.cart) ? body.cart : [];
         const cashSessionId = body.cashSessionId ?? null;
+        const idempotencyKey = body.idempotencyKey ?? null;  // FASE2
 
         if (!storeId || !paymentMethod || !cart.length || !Number.isFinite(total) || total <= 0) {
             return NextResponse.json(
@@ -67,7 +69,9 @@ export async function POST(request: Request) {
             p_cart: cartPayload,
             p_customer_name: customerName,
             p_cash_session_id: cashSessionId,
+            p_idempotency_key: idempotencyKey,  // FASE2
         });
+
 
         if (error) {
             return NextResponse.json(

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { X, CheckCircle, Printer, MessageCircle } from 'lucide-react';
 import { Receipt, ReceiptData } from '@/components/shared/Receipt';
 import { useAuth } from '@/context/AuthContext';
@@ -28,6 +28,8 @@ export function CheckoutModal({
     const [shareNotice, setShareNotice] = useState<string | null>(null);
     const [saleId, setSaleId] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
+    // FASE2: idempotency key generada una vez por instancia del modal
+    const idempotencyKey = useRef<string>(crypto.randomUUID());
     const [storeSettings, setStoreSettings] = useState<{
         receipt_business_name: string | null;
         receipt_cuit: string | null;
@@ -123,6 +125,11 @@ export function CheckoutModal({
             setError('Sesión no válida o no hay tienda seleccionada.');
             return;
         }
+        // FASE2: guard de caja abierta
+        if (!cashSessionId) {
+            setError('No hay una sesión de caja abierta. Abrí la caja antes de cobrar.');
+            return;
+        }
 
         setIsProcessing(true);
         setError(null);
@@ -140,6 +147,7 @@ export function CheckoutModal({
                         customerName,
                         cart,
                         cashSessionId: cashSessionId || null,
+                        idempotencyKey: idempotencyKey.current,  // FASE2
                     })
                 }),
                 'crear la venta',

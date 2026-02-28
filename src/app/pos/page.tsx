@@ -11,7 +11,8 @@ import { Product } from '@/components/products/ProductModal';
 
 export default function POSPage() {
     const { storeId } = useAuth();
-    const supabase = createClient();
+    // FASE2: supabase como singleton — no re-instanciar en cada render
+    const supabase = useMemo(() => createClient(), []);
 
     // Cash session
     const [cashSessionId, setCashSessionId] = useState<string | null>(null);
@@ -25,10 +26,18 @@ export default function POSPage() {
 
     const [cart, setCart] = useState<{ product: Product; quantity: number }[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
+    const [debouncedSearch, setDebouncedSearch] = useState('');  // FASE2: debounce
     const [selectedCategory, setSelectedCategory] = useState<string>('all');
     const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
 
     const saleConfirmedCart = useRef<{ product: Product; quantity: number }[] | null>(null);
+    // FASE2: debounce del buscador — espera 250ms antes de filtrar
+    const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const handleSearchChange = useCallback((value: string) => {
+        setSearchTerm(value);
+        if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+        searchDebounceRef.current = setTimeout(() => setDebouncedSearch(value), 250);
+    }, []);
 
     // Check for active cash session on mount
     useEffect(() => {
@@ -147,14 +156,14 @@ export default function POSPage() {
         setCart((curr) => curr.filter((item) => item.product.id !== productId));
     };
 
-    const filteredProducts = products.filter((p) => {
-        const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (p.sku && p.sku.toLowerCase().includes(searchTerm.toLowerCase()));
-
+    // FASE2: useMemo para no recalcular en cada re-render
+    const filteredProducts = useMemo(() => products.filter((p) => {
+        const matchesSearch = !debouncedSearch ||
+            p.name.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+            (p.sku && p.sku.toLowerCase().includes(debouncedSearch.toLowerCase()));
         const matchesCategory = selectedCategory === 'all' || p.category === selectedCategory;
-
         return matchesSearch && matchesCategory;
-    });
+    }), [products, debouncedSearch, selectedCategory]);
 
     const subtotal = cart.reduce((acc, item) => acc + item.product.sale_price * item.quantity, 0);
 
@@ -193,7 +202,7 @@ export default function POSPage() {
                             placeholder="Buscar producto..."
                             className="w-full pl-14 pr-6 py-4 rounded-2xl bg-slate-900 border border-slate-800 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-lg text-lg font-medium transition-all"
                             value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
+                            onChange={(e) => handleSearchChange(e.target.value)}
                         />
                     </div>
 
@@ -363,7 +372,12 @@ export default function POSPage() {
 
                         <button
                             onClick={() => setIsCheckoutOpen(true)}
-                            className="w-full py-5 rounded-2xl font-black text-xl shadow-xl flex items-center justify-center gap-4 transition-all bg-primary text-white shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] hover:shadow-primary/40 border border-blue-500/50"
+                            disabled={!cashSessionId}
+                            className={`w-full py-5 rounded-2xl font-black text-xl shadow-xl flex items-center justify-center gap-4 transition-all border ${cashSessionId
+                                    ? 'bg-primary text-white shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] hover:shadow-primary/40 border-blue-500/50'
+                                    : 'bg-slate-800 text-slate-600 border-slate-700 cursor-not-allowed'
+                                }`}
+                            title={!cashSessionId ? 'Abrí la caja primero' : undefined}
                         >
                             <Receipt size={24} />
                             COBRAR ONLINE
