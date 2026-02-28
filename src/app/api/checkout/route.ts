@@ -18,6 +18,7 @@ type CheckoutBody = {
     phone?: string;
     customerName?: string;
     cart?: CheckoutItem[];
+    cashSessionId?: string | null;
 };
 
 export async function POST(request: Request) {
@@ -39,6 +40,7 @@ export async function POST(request: Request) {
         const phone = body.phone?.trim() ?? '';
         const customerName = body.customerName?.trim() ?? '';
         const cart = Array.isArray(body.cart) ? body.cart : [];
+        const cashSessionId = body.cashSessionId ?? null;
 
         if (!storeId || !paymentMethod || !cart.length || !Number.isFinite(total) || total <= 0) {
             return NextResponse.json(
@@ -64,6 +66,7 @@ export async function POST(request: Request) {
             p_phone: phone,
             p_cart: cartPayload,
             p_customer_name: customerName,
+            p_cash_session_id: cashSessionId,
         });
 
         if (error) {

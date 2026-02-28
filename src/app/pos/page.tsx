@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { ShoppingCart, Search, Receipt, Loader2, Image as ImageIcon, Trash2 } from 'lucide-react';
+import { ShoppingCart, Search, Receipt, Loader2, Image as ImageIcon, Trash2, LogOut } from 'lucide-react';
 import { CheckoutModal } from '@/components/pos/CheckoutModal';
+import { CashOpenModal } from '@/components/pos/CashOpenModal';
+import { CashCloseModal } from '@/components/pos/CashCloseModal';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/context/AuthContext';
 import { Product } from '@/components/products/ProductModal';
@@ -10,6 +12,13 @@ import { Product } from '@/components/products/ProductModal';
 export default function POSPage() {
     const { storeId } = useAuth();
     const supabase = createClient();
+
+    // Cash session
+    const [cashSessionId, setCashSessionId] = useState<string | null>(null);
+    const [openingAmount, setOpeningAmount] = useState(0);
+    const [showOpenModal, setShowOpenModal] = useState(false);
+    const [showCloseModal, setShowCloseModal] = useState(false);
+    const [sessionLoading, setSessionLoading] = useState(true);
 
     const [products, setProducts] = useState<Product[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -20,6 +29,33 @@ export default function POSPage() {
     const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
 
     const saleConfirmedCart = useRef<{ product: Product; quantity: number }[] | null>(null);
+
+    // Check for active cash session on mount
+    useEffect(() => {
+        const checkSession = async () => {
+            if (!storeId) return;
+            const today = new Date().toISOString().slice(0, 10);
+            const { data } = await supabase
+                .from('cash_sessions')
+                .select('id, opening_amount')
+                .eq('store_id', storeId)
+                .eq('status', 'OPEN')
+                .gte('opened_at', `${today}T00:00:00.000Z`)
+                .order('opened_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            if (data) {
+                setCashSessionId(data.id);
+                setOpeningAmount(data.opening_amount);
+            } else {
+                setShowOpenModal(true);
+            }
+            setSessionLoading(false);
+        };
+        checkSession();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [storeId]);
 
     const fetchProducts = useCallback(async () => {
         if (!storeId) return;
@@ -118,6 +154,27 @@ export default function POSPage() {
 
     return (
         <div className="flex h-full bg-slate-950 font-sans custom-scrollbar text-slate-200">
+            {/* Cash session modals */}
+            {!sessionLoading && showOpenModal && (
+                <CashOpenModal
+                    onSessionOpened={(id, amount) => {
+                        setCashSessionId(id);
+                        setOpeningAmount(amount);
+                        setShowOpenModal(false);
+                    }}
+                />
+            )}
+            {showCloseModal && cashSessionId && (
+                <CashCloseModal
+                    sessionId={cashSessionId}
+                    openingAmount={openingAmount}
+                    onSessionClosed={() => {
+                        setCashSessionId(null);
+                        setShowCloseModal(false);
+                        setShowOpenModal(true);
+                    }}
+                />
+            )}
             {/* Products Section */}
             <div className="flex-1 p-6 lg:p-8 flex flex-col h-full overflow-hidden">
                 <div className="flex flex-col sm:flex-row gap-4 mb-8">
@@ -290,6 +347,16 @@ export default function POSPage() {
                             <Receipt size={24} />
                             COBRAR ONLINE
                         </button>
+
+                        {cashSessionId && (
+                            <button
+                                onClick={() => setShowCloseModal(true)}
+                                className="w-full py-3 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all bg-slate-800 hover:bg-orange-500/10 text-slate-400 hover:text-orange-400 border border-slate-700 hover:border-orange-500/30"
+                            >
+                                <LogOut size={16} />
+                                Cerrar Caja
+                            </button>
+                        )}
                     </div>
                 </div>
             )}
@@ -298,6 +365,7 @@ export default function POSPage() {
                 <CheckoutModal
                     cart={cart}
                     total={subtotal}
+                    cashSessionId={cashSessionId ?? undefined}
                     onClose={handleCloseCheckout}
                     onConfirm={handleCheckoutConfirm}
                 />

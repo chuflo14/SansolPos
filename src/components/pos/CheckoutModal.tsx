@@ -10,12 +10,14 @@ export function CheckoutModal({
     cart,
     total,
     onClose,
-    onConfirm
+    onConfirm,
+    cashSessionId,
 }: {
     cart: any[],
     total: number,
     onClose: () => void,
-    onConfirm: () => void
+    onConfirm: () => void,
+    cashSessionId?: string,
 }) {
     const [step, setStep] = useState(1);
     const [paymentMethod, setPaymentMethod] = useState('');
@@ -136,7 +138,8 @@ export function CheckoutModal({
                         paymentMethod,
                         phone,
                         customerName,
-                        cart
+                        cart,
+                        cashSessionId: cashSessionId || null,
                     })
                 }),
                 'crear la venta',

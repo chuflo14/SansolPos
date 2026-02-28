@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, ShoppingCart, Package, ReceiptText, Settings, LogOut, Users } from 'lucide-react';
+import { LayoutDashboard, ShoppingCart, Package, ReceiptText, Settings, LogOut, Users, ClipboardList } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
 export function Sidebar() {
@@ -12,6 +12,7 @@ export function Sidebar() {
     const allNavItems = [
         { name: 'POS (Caja)', href: '/pos', icon: ShoppingCart },
         { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+        { name: 'Ventas', href: '/ventas', icon: ClipboardList, adminOnly: true },
         { name: 'Clientes', href: '/clientes', icon: Users },
         { name: 'Productos', href: '/products', icon: Package },
         { name: 'Gastos', href: '/expenses', icon: ReceiptText },
@@ -20,7 +21,8 @@ export function Sidebar() {
 
     const navItems = allNavItems.filter(item => {
         if (userRole === 'admin') return true;
-        // The cashier role only sees POS and Expenses
+        // Cashier role only sees POS and Expenses
+        if ((item as { adminOnly?: boolean }).adminOnly) return false;
         return ['POS (Caja)', 'Gastos'].includes(item.name);
     });
 

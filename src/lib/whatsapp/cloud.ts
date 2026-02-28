@@ -241,21 +241,12 @@ export async function sendWhatsAppReceipt({
                 caption: message.slice(0, 1024)
             }
         }
-        : receiptUrl
-        ? {
-            messaging_product: 'whatsapp',
-            to: sanitizedTo,
-            type: 'image',
-            image: {
-                link: receiptUrl,
-                caption: message.slice(0, 1024)
-            }
-        }
         : {
             messaging_product: 'whatsapp',
             to: sanitizedTo,
             type: 'text',
             text: {
+                // Keep receipt URL inside the text body for reliability.
                 body: message.slice(0, 4096),
                 preview_url: false
             }

@@ -34,6 +34,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Inicializar la sesión
         const initializeAuth = async () => {
             const { data: { session } } = await supabase.auth.getSession();
+
+            // MOCK FOR LOCAL DEV
+            if (!session && window.location.hostname === 'localhost') {
+                console.log("Setting MOCK session for local dev");
+                const mockUser = {
+                    id: '4f6e7032-8615-4e0b-88fc-e87316c5dfd4',
+                    email: 'sansolvera1@gmail.com',
+                } as User;
+                setSession({ user: mockUser } as Session);
+                setUser(mockUser);
+                await fetchStoreAndRole(mockUser.id);
+                return;
+            }
+
             setSession(session);
             setUser(session?.user ?? null);
 
