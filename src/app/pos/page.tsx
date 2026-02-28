@@ -34,13 +34,18 @@ export default function POSPage() {
     useEffect(() => {
         const checkSession = async () => {
             if (!storeId) return;
-            const today = new Date().toISOString().slice(0, 10);
+            // FASE1 fix: usar timezone Argentina (UTC-3) para evitar detectar sesión incorrecta
+            const now = new Date();
+            const argOffset = -3 * 60 * 60 * 1000; // UTC-3 en ms
+            const argNow = new Date(now.getTime() + argOffset);
+            const today = argNow.toISOString().slice(0, 10);
+
             const { data } = await supabase
                 .from('cash_sessions')
                 .select('id, opening_amount')
                 .eq('store_id', storeId)
                 .eq('status', 'OPEN')
-                .gte('opened_at', `${today}T00:00:00.000Z`)
+                .gte('opened_at', `${today}T00:00:00.000-03:00`)
                 .order('opened_at', { ascending: false })
                 .limit(1)
                 .maybeSingle();
@@ -56,6 +61,7 @@ export default function POSPage() {
         checkSession();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [storeId]);
+
 
     const fetchProducts = useCallback(async () => {
         if (!storeId) return;
@@ -173,6 +179,7 @@ export default function POSPage() {
                         setShowCloseModal(false);
                         setShowOpenModal(true);
                     }}
+                    onCancel={() => setShowCloseModal(false)}
                 />
             )}
             {/* Products Section */}

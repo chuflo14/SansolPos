@@ -9,13 +9,14 @@ interface Props {
     sessionId: string;
     openingAmount: number;
     onSessionClosed: () => void;
+    onCancel: () => void;  // FASE1: separado de onSessionClosed
 }
 
 function fmt(n: number) {
     return n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-export function CashCloseModal({ sessionId, openingAmount, onSessionClosed }: Props) {
+export function CashCloseModal({ sessionId, openingAmount, onSessionClosed, onCancel }: Props) {
     const { storeId } = useAuth();
     const supabase = createClient();
 
@@ -178,7 +179,7 @@ export function CashCloseModal({ sessionId, openingAmount, onSessionClosed }: Pr
 
                         <div className="flex gap-3">
                             <button
-                                onClick={onSessionClosed}
+                                onClick={onCancel}
                                 className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl border border-slate-700 transition-all"
                             >
                                 Cancelar
