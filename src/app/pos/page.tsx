@@ -177,7 +177,8 @@ export default function POSPage() {
             )}
             {/* Products Section */}
             <div className="flex-1 p-6 lg:p-8 flex flex-col h-full overflow-hidden">
-                <div className="flex flex-col sm:flex-row gap-4 mb-8">
+                <div className="flex flex-col sm:flex-row gap-3 mb-8">
+                    {/* Search */}
                     <div className="relative flex-1">
                         <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500" size={24} />
                         <input
@@ -188,22 +189,35 @@ export default function POSPage() {
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
                     </div>
+
                     {/* Category Dropdown */}
-                    <div className="w-full sm:w-64 shrink-0 relative">
+                    <div className="w-full sm:w-52 shrink-0 relative">
                         <select
                             value={selectedCategory}
                             onChange={(e) => setSelectedCategory(e.target.value)}
-                            className="w-full h-full min-h-[60px] px-6 py-4 rounded-2xl bg-slate-900 border border-slate-800 text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-lg text-lg font-medium transition-all appearance-none cursor-pointer"
+                            className="w-full h-full min-h-[60px] px-5 py-4 rounded-2xl bg-slate-900 border border-slate-800 text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-lg text-base font-medium transition-all appearance-none cursor-pointer"
                         >
                             <option value="all">Todas las categorías</option>
                             {categories.map(category => (
                                 <option key={category} value={category}>{category}</option>
                             ))}
                         </select>
-                        <div className="absolute right-5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
+                        <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
                         </div>
                     </div>
+
+                    {/* Cerrar Caja */}
+                    {cashSessionId && (
+                        <button
+                            onClick={() => setShowCloseModal(true)}
+                            className="shrink-0 flex items-center gap-2 px-5 py-4 rounded-2xl bg-slate-900 border border-slate-800 hover:bg-orange-500/10 hover:border-orange-500/40 text-slate-400 hover:text-orange-400 font-bold text-sm shadow-lg transition-all whitespace-nowrap"
+                            title="Cerrar Caja"
+                        >
+                            <LogOut size={18} />
+                            <span className="hidden lg:inline">Cerrar Caja</span>
+                        </button>
+                    )}
                 </div>
 
                 <div className="flex-1 overflow-y-auto pb-6 pr-2 custom-scrollbar">
@@ -348,15 +362,6 @@ export default function POSPage() {
                             COBRAR ONLINE
                         </button>
 
-                        {cashSessionId && (
-                            <button
-                                onClick={() => setShowCloseModal(true)}
-                                className="w-full py-3 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all bg-slate-800 hover:bg-orange-500/10 text-slate-400 hover:text-orange-400 border border-slate-700 hover:border-orange-500/30"
-                            >
-                                <LogOut size={16} />
-                                Cerrar Caja
-                            </button>
-                        )}
                     </div>
                 </div>
             )}
