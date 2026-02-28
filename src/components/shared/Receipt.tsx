@@ -20,6 +20,7 @@ export type ReceiptData = {
     paymentMethod: string;
     customerName?: string;
     customerPhone?: string;
+    logoUrl?: string;
     qrUrl: string;
     legalFooter: string;
 };
@@ -36,6 +37,14 @@ export function Receipt({ data, format = 'thermal' }: ReceiptProps) {
         <div className={`bg-white text-black p-4 mx-auto ${isThermal ? 'w-80 font-mono text-sm' : 'w-[210mm] min-h-[297mm] p-8 font-sans'}`}>
             {/* Header */}
             <div className="text-center mb-6 border-b-2 border-dashed border-gray-400 pb-4">
+                {data.logoUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                        src={data.logoUrl}
+                        alt="Logo"
+                        className={`mx-auto mb-3 object-contain ${isThermal ? 'h-16 max-w-[160px]' : 'h-24 max-w-[220px]'}`}
+                    />
+                )}
                 <h1 className={`${isThermal ? 'text-xl' : 'text-3xl'} font-bold uppercase`}>{data.storeName}</h1>
                 <p className="font-semibold">{data.businessName}</p>
                 <p>CUIT: {data.cuit}</p>

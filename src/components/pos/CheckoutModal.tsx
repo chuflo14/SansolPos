@@ -31,6 +31,7 @@ export function CheckoutModal({
         receipt_cuit: string | null;
         receipt_address: string | null;
         receipt_legal_footer: string | null;
+        receipt_logo_url: string | null;
     } | null>(null);
 
     const { storeId, user } = useAuth();
@@ -41,7 +42,7 @@ export function CheckoutModal({
         if (!storeId) return;
         supabase
             .from('store_settings')
-            .select('receipt_business_name, receipt_cuit, receipt_address, receipt_legal_footer')
+            .select('receipt_business_name, receipt_cuit, receipt_address, receipt_legal_footer, receipt_logo_url')
             .eq('store_id', storeId)
             .maybeSingle()
             .then(({ data }) => { if (data) setStoreSettings(data); });
@@ -187,6 +188,7 @@ export function CheckoutModal({
         paymentMethod,
         customerPhone: phone || undefined,
         customerName: customerName || undefined,
+        logoUrl: storeSettings?.receipt_logo_url || undefined,
         qrUrl: 'https://afip.gob.ar/qr',
         legalFooter: storeSettings?.receipt_legal_footer || 'COMPROBANTE NO VÁLIDO COMO FACTURA'
     };
