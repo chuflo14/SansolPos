@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Users, Search, Phone, ShoppingBag, Calendar, CreditCard, Loader2 } from 'lucide-react';
+import { Users, Search, Phone, ShoppingBag, Calendar, CreditCard, Loader2, Trash2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/context/AuthContext';
 
@@ -41,6 +41,7 @@ export default function ClientesPage() {
     const [customers, setCustomers] = useState<Customer[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
+    const [deletingKey, setDeletingKey] = useState<string | null>(null);
 
     const fetchCustomers = useCallback(async () => {
         if (!storeId) return;
@@ -99,6 +100,37 @@ export default function ClientesPage() {
             c.customer_phone?.includes(q)
         );
     });
+
+    const handleDelete = async (c: Customer) => {
+        const label = c.customer_name || c.customer_phone || 'este cliente';
+        if (!window.confirm(`¿Eliminar a "${label}" del listado de clientes?\nSus ventas no se borran, solo se desvincula el nombre y teléfono.`)) return;
+
+        const key = c.customer_phone?.trim() || c.customer_name?.trim() || '';
+        setDeletingKey(key);
+
+        // Clear customer info from all matching sales (keep the sale records intact)
+        let query = supabase
+            .from('sales')
+            .update({ customer_name: null, customer_phone: null })
+            .eq('store_id', storeId!);
+
+        if (c.customer_phone) {
+            query = query.eq('customer_phone', c.customer_phone);
+        } else if (c.customer_name) {
+            query = query.eq('customer_name', c.customer_name).is('customer_phone', null);
+        }
+
+        const { error } = await query;
+
+        if (!error) {
+            setCustomers(prev => prev.filter(x => {
+                const xKey = x.customer_phone?.trim() || x.customer_name?.trim() || '';
+                return xKey !== key;
+            }));
+        }
+
+        setDeletingKey(null);
+    };
 
     return (
         <div className="h-full w-full overflow-y-auto bg-slate-950 font-sans custom-scrollbar">
@@ -165,18 +197,19 @@ export default function ClientesPage() {
                                             <Calendar size={14} /> Última Visita
                                         </div>
                                     </th>
+                                    <th className="py-4 px-6 text-center">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-800/50">
                                 {isLoading ? (
                                     <tr>
-                                        <td colSpan={6} className="py-20 text-center">
+                                        <td colSpan={7} className="py-20 text-center">
                                             <Loader2 className="animate-spin h-8 w-8 mx-auto text-primary" />
                                         </td>
                                     </tr>
                                 ) : filtered.length === 0 ? (
                                     <tr>
-                                        <td colSpan={6} className="py-20 text-center">
+                                        <td colSpan={7} className="py-20 text-center">
                                             <div className="flex flex-col items-center gap-3 text-slate-500">
                                                 <Users size={48} className="opacity-30" />
                                                 <p className="font-semibold text-lg">
@@ -241,6 +274,25 @@ export default function ClientesPage() {
                                             {/* Last visit */}
                                             <td className="py-4 px-6 text-slate-400 text-sm font-medium">
                                                 {formatDate(c.last_visit)}
+                                            </td>
+                                            {/* Delete */}
+                                            <td className="py-4 px-6 text-center">
+                                                {(() => {
+                                                    const key = c.customer_phone?.trim() || c.customer_name?.trim() || '';
+                                                    const isDeleting = deletingKey === key;
+                                                    return (
+                                                        <button
+                                                            onClick={() => handleDelete(c)}
+                                                            disabled={isDeleting}
+                                                            className="opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded-lg bg-rose-500/10 text-rose-400 border border-rose-500/20 hover:bg-rose-500 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed"
+                                                            title="Eliminar cliente"
+                                                        >
+                                                            {isDeleting
+                                                                ? <Loader2 size={16} className="animate-spin" />
+                                                                : <Trash2 size={16} />}
+                                                        </button>
+                                                    );
+                                                })()}
                                             </td>
                                         </tr>
                                     );
