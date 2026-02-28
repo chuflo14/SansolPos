@@ -75,17 +75,19 @@ export default function POSPage() {
     const fetchProducts = useCallback(async () => {
         if (!storeId) return;
         setIsLoading(true);
+        // FASE4: SELECT solo campos necesarios — reduce payload
         const { data, error } = await supabase
             .from('products')
-            .select('*')
+            .select('id, name, sku, barcode, category, current_stock, min_stock, cost_price, sale_price, photo_url')
             .eq('store_id', storeId)
             .order('name');
 
         if (!error && data) {
-            setProducts(data);
+            setProducts(data as Product[]);
         }
         setIsLoading(false);
     }, [storeId, supabase]);
+
 
     useEffect(() => {
         if (storeId) fetchProducts();
@@ -374,8 +376,8 @@ export default function POSPage() {
                             onClick={() => setIsCheckoutOpen(true)}
                             disabled={!cashSessionId}
                             className={`w-full py-5 rounded-2xl font-black text-xl shadow-xl flex items-center justify-center gap-4 transition-all border ${cashSessionId
-                                    ? 'bg-primary text-white shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] hover:shadow-primary/40 border-blue-500/50'
-                                    : 'bg-slate-800 text-slate-600 border-slate-700 cursor-not-allowed'
+                                ? 'bg-primary text-white shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] hover:shadow-primary/40 border-blue-500/50'
+                                : 'bg-slate-800 text-slate-600 border-slate-700 cursor-not-allowed'
                                 }`}
                             title={!cashSessionId ? 'Abrí la caja primero' : undefined}
                         >
