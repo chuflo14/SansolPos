@@ -1,6 +1,20 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
+// FASE3: Rate limiter sencillo — máx 5 requests por user en 10 segundos
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+function isRateLimited(userId: string): boolean {
+    const now = Date.now();
+    const entry = rateLimitMap.get(userId);
+    if (!entry || now > entry.resetAt) {
+        rateLimitMap.set(userId, { count: 1, resetAt: now + 10_000 });
+        return false;
+    }
+    if (entry.count >= 5) return true;
+    entry.count++;
+    return false;
+}
+
 type CheckoutItem = {
     product: {
         id: string;
@@ -33,6 +47,15 @@ export async function POST(request: Request) {
                 { status: 401 }
             );
         }
+
+        // FASE3: rate limit — máx 5 checkouts por user en 10s
+        if (isRateLimited(user.id)) {
+            return NextResponse.json(
+                { code: 'RATE_LIMITED', error: 'Demasiadas solicitudes. Esperá unos segundos.' },
+                { status: 429 }
+            );
+        }
+
 
         const body = await request.json() as CheckoutBody;
         const storeId = body.storeId?.trim();

@@ -14,6 +14,7 @@ type Settings = {
     transfer_holder: string;
     transfer_cbu: string;
     transfer_alias: string;
+    // FASE3: mp_access_token vive en store_secrets (tabla separada admin-only)
     mp_access_token: string;
 };
 
@@ -52,7 +53,14 @@ export default function SettingsPage() {
         setIsLoading(true);
         const { data } = await supabase
             .from('store_settings')
-            .select('receipt_business_name, receipt_cuit, receipt_address, receipt_legal_footer, receipt_logo_url, transfer_holder, transfer_cbu, transfer_alias, mp_access_token')
+            .select('receipt_business_name, receipt_cuit, receipt_address, receipt_legal_footer, receipt_logo_url, transfer_holder, transfer_cbu, transfer_alias')
+            .eq('store_id', storeId)
+            .maybeSingle();
+
+        // FASE3: mp_access_token se lee de store_secrets (admin-only)
+        const { data: secrets } = await supabase
+            .from('store_secrets')
+            .select('mp_access_token')
             .eq('store_id', storeId)
             .maybeSingle();
 
@@ -66,7 +74,7 @@ export default function SettingsPage() {
                 transfer_holder: data.transfer_holder ?? '',
                 transfer_cbu: data.transfer_cbu ?? '',
                 transfer_alias: data.transfer_alias ?? '',
-                mp_access_token: data.mp_access_token ?? '',
+                mp_access_token: secrets?.mp_access_token ?? '',
             });
             if (data.receipt_logo_url) setLogoPreview(data.receipt_logo_url);
         }
@@ -133,8 +141,18 @@ export default function SettingsPage() {
                 transfer_holder: form.transfer_holder.trim() || null,
                 transfer_cbu: form.transfer_cbu.trim() || null,
                 transfer_alias: form.transfer_alias.trim() || null,
-                mp_access_token: form.mp_access_token.trim() || null,
             }, { onConflict: 'store_id' });
+
+        // FASE3: mp_access_token se guarda en store_secrets (admin-only)
+        if (form.mp_access_token.trim()) {
+            await supabase
+                .from('store_secrets')
+                .upsert({
+                    store_id: storeId,
+                    mp_access_token: form.mp_access_token.trim(),
+                }, { onConflict: 'store_id' });
+        }
+
 
         if (err) {
             setError('No se pudieron guardar los cambios.');
