@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { Save, Loader2, CheckCircle, Building2, FileText } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Save, Loader2, CheckCircle, Building2, FileText, ImagePlus, X } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/context/AuthContext';
 
@@ -10,6 +10,7 @@ type Settings = {
     receipt_cuit: string;
     receipt_address: string;
     receipt_legal_footer: string;
+    receipt_logo_url: string;
 };
 
 const EMPTY: Settings = {
@@ -17,13 +18,16 @@ const EMPTY: Settings = {
     receipt_cuit: '',
     receipt_address: '',
     receipt_legal_footer: '',
+    receipt_logo_url: '',
 };
 
-const INPUT = `w-full p-4 bg-slate-900/50 border border-slate-800 rounded-xl focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none text-white font-medium transition-all shadow-inner placeholder-slate-600`;
+const INPUT = 'w-full p-4 bg-slate-900/50 border border-slate-800 rounded-xl focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none text-white font-medium transition-all shadow-inner placeholder-slate-600';
+const BTN_SAVE = 'flex items-center gap-2 px-6 py-3 font-black text-white rounded-xl transition-all border shadow-lg disabled:opacity-50 disabled:cursor-not-allowed min-w-[160px] justify-center bg-blue-600 hover:bg-blue-500 border-blue-500';
 
 export default function SettingsPage() {
     const { storeId } = useAuth();
     const supabase = createClient();
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const [form, setForm] = useState<Settings>(EMPTY);
     const [isLoading, setIsLoading] = useState(true);
@@ -31,12 +35,16 @@ export default function SettingsPage() {
     const [saved, setSaved] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    // Logo upload state
+    const [logoPreview, setLogoPreview] = useState<string | null>(null);
+    const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+
     const fetchSettings = useCallback(async () => {
         if (!storeId) return;
         setIsLoading(true);
         const { data } = await supabase
             .from('store_settings')
-            .select('receipt_business_name, receipt_cuit, receipt_address, receipt_legal_footer')
+            .select('receipt_business_name, receipt_cuit, receipt_address, receipt_legal_footer, receipt_logo_url')
             .eq('store_id', storeId)
             .maybeSingle();
 
@@ -46,7 +54,9 @@ export default function SettingsPage() {
                 receipt_cuit: data.receipt_cuit ?? '',
                 receipt_address: data.receipt_address ?? '',
                 receipt_legal_footer: data.receipt_legal_footer ?? '',
+                receipt_logo_url: data.receipt_logo_url ?? '',
             });
+            if (data.receipt_logo_url) setLogoPreview(data.receipt_logo_url);
         }
         setIsLoading(false);
     }, [storeId, supabase]);
@@ -56,6 +66,43 @@ export default function SettingsPage() {
     const set = (key: keyof Settings) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
         setForm(f => ({ ...f, [key]: e.target.value }));
 
+    /* ── Logo Upload ─────────────────────────────────────────── */
+    const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !storeId) return;
+
+        // Preview instantly
+        const preview = URL.createObjectURL(file);
+        setLogoPreview(preview);
+        setIsUploadingLogo(true);
+        setError(null);
+
+        const ext = file.name.split('.').pop();
+        const path = `logos/${storeId}/logo.${ext}`;
+
+        const { error: uploadErr } = await supabase.storage
+            .from('receipts')
+            .upload(path, file, { upsert: true, contentType: file.type });
+
+        if (uploadErr) {
+            setError('No se pudo subir el logo. Verificá que el bucket "receipts" existe en Supabase Storage.');
+            setIsUploadingLogo(false);
+            return;
+        }
+
+        const { data: { publicUrl } } = supabase.storage.from('receipts').getPublicUrl(path);
+        setForm(f => ({ ...f, receipt_logo_url: publicUrl }));
+        setLogoPreview(publicUrl);
+        setIsUploadingLogo(false);
+    };
+
+    const handleRemoveLogo = () => {
+        setLogoPreview(null);
+        setForm(f => ({ ...f, receipt_logo_url: '' }));
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+
+    /* ── Save ────────────────────────────────────────────────── */
     const handleSave = async () => {
         if (!storeId) return;
         setIsSaving(true);
@@ -70,10 +117,11 @@ export default function SettingsPage() {
                 receipt_cuit: form.receipt_cuit.trim() || null,
                 receipt_address: form.receipt_address.trim() || null,
                 receipt_legal_footer: form.receipt_legal_footer.trim() || null,
+                receipt_logo_url: form.receipt_logo_url || null,
             }, { onConflict: 'store_id' });
 
         if (err) {
-            setError('No se pudieron guardar los cambios. Intenta nuevamente.');
+            setError('No se pudieron guardar los cambios.');
         } else {
             setSaved(true);
             setTimeout(() => setSaved(false), 3000);
@@ -81,6 +129,7 @@ export default function SettingsPage() {
         setIsSaving(false);
     };
 
+    /* ── Render ──────────────────────────────────────────────── */
     return (
         <div className="h-full w-full overflow-y-auto bg-slate-950 font-sans custom-scrollbar">
             <div className="p-8 lg:p-10 pb-32 max-w-3xl mx-auto min-h-screen">
@@ -93,9 +142,8 @@ export default function SettingsPage() {
                     </div>
                     <button
                         onClick={handleSave}
-                        disabled={isSaving || isLoading}
-                        className="flex items-center gap-2 px-6 py-3 font-black text-white rounded-xl transition-all border shadow-lg disabled:opacity-50 disabled:cursor-not-allowed min-w-[160px] justify-center
-                            bg-blue-600 hover:bg-blue-500 border-blue-500 hover:shadow-blue-500/30 hover:-translate-y-0.5"
+                        disabled={isSaving || isLoading || isUploadingLogo}
+                        className={BTN_SAVE}
                     >
                         {isSaving
                             ? <><Loader2 size={18} className="animate-spin" /> Guardando...</>
@@ -117,7 +165,73 @@ export default function SettingsPage() {
                     </div>
                 ) : (
                     <div className="space-y-8">
-                        {/* Section: Store Info */}
+
+                        {/* Logo */}
+                        <div className="bg-slate-900/50 backdrop-blur-xl rounded-3xl border border-slate-800 shadow-xl overflow-hidden">
+                            <div className="p-6 border-b border-slate-800 flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-slate-700/50 border border-slate-700 flex items-center justify-center">
+                                    <ImagePlus size={20} className="text-slate-400" />
+                                </div>
+                                <div>
+                                    <h2 className="text-lg font-bold text-white">Logo del Comprobante</h2>
+                                    <p className="text-slate-400 text-sm">Se imprime en la cabecera del ticket. PNG o JPG, max 2 MB.</p>
+                                </div>
+                            </div>
+                            <div className="p-6 flex items-center gap-6">
+                                {/* Preview */}
+                                {logoPreview ? (
+                                    <div className="relative shrink-0">
+                                        <img
+                                            src={logoPreview}
+                                            alt="Logo"
+                                            className="w-28 h-28 object-contain rounded-2xl bg-white/5 border border-slate-700 p-2"
+                                        />
+                                        {isUploadingLogo && (
+                                            <div className="absolute inset-0 flex items-center justify-center bg-slate-950/60 rounded-2xl">
+                                                <Loader2 className="animate-spin text-white" size={24} />
+                                            </div>
+                                        )}
+                                        <button
+                                            onClick={handleRemoveLogo}
+                                            className="absolute -top-2 -right-2 w-6 h-6 bg-rose-500 text-white rounded-full flex items-center justify-center hover:bg-rose-600 transition-colors"
+                                        >
+                                            <X size={12} />
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div
+                                        className="w-28 h-28 rounded-2xl border-2 border-dashed border-slate-700 flex items-center justify-center text-slate-600 shrink-0 hover:border-slate-500 cursor-pointer transition-colors"
+                                        onClick={() => fileInputRef.current?.click()}
+                                    >
+                                        <ImagePlus size={28} />
+                                    </div>
+                                )}
+
+                                <div className="flex flex-col gap-3">
+                                    <input
+                                        ref={fileInputRef}
+                                        type="file"
+                                        accept="image/png,image/jpeg,image/webp"
+                                        className="hidden"
+                                        onChange={handleLogoChange}
+                                    />
+                                    <button
+                                        onClick={() => fileInputRef.current?.click()}
+                                        disabled={isUploadingLogo}
+                                        className="flex items-center gap-2 px-5 py-3 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-xl border border-slate-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                                    >
+                                        {isUploadingLogo ? <Loader2 size={16} className="animate-spin" /> : <ImagePlus size={16} />}
+                                        {isUploadingLogo ? 'Subiendo...' : logoPreview ? 'Cambiar Logo' : 'Subir Logo'}
+                                    </button>
+                                    <p className="text-slate-500 text-xs">
+                                        El logo se sube automáticamente al seleccionarlo.<br />
+                                        Presioná Guardar Cambios para confirmar.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Fiscal data */}
                         <div className="bg-slate-900/50 backdrop-blur-xl rounded-3xl border border-slate-800 shadow-xl overflow-hidden">
                             <div className="p-6 border-b border-slate-800 flex items-center gap-3">
                                 <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
@@ -132,39 +246,21 @@ export default function SettingsPage() {
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                                     <div>
                                         <label className="block text-sm font-bold text-slate-300 mb-2">Nombre Comercial</label>
-                                        <input
-                                            type="text"
-                                            placeholder="Ej: SANSOL"
-                                            className={INPUT}
-                                            value={form.receipt_business_name}
-                                            onChange={set('receipt_business_name')}
-                                        />
+                                        <input type="text" placeholder="Ej: SANSOL" className={INPUT} value={form.receipt_business_name} onChange={set('receipt_business_name')} />
                                     </div>
                                     <div>
                                         <label className="block text-sm font-bold text-slate-300 mb-2">CUIT</label>
-                                        <input
-                                            type="text"
-                                            placeholder="Ej: 30-12345678-9"
-                                            className={INPUT}
-                                            value={form.receipt_cuit}
-                                            onChange={set('receipt_cuit')}
-                                        />
+                                        <input type="text" placeholder="Ej: 30-12345678-9" className={INPUT} value={form.receipt_cuit} onChange={set('receipt_cuit')} />
                                     </div>
                                 </div>
                                 <div>
                                     <label className="block text-sm font-bold text-slate-300 mb-2">Domicilio Comercial</label>
-                                    <input
-                                        type="text"
-                                        placeholder="Ej: Av. Corrientes 1234, CABA"
-                                        className={INPUT}
-                                        value={form.receipt_address}
-                                        onChange={set('receipt_address')}
-                                    />
+                                    <input type="text" placeholder="Ej: Av. Corrientes 1234, CABA" className={INPUT} value={form.receipt_address} onChange={set('receipt_address')} />
                                 </div>
                             </div>
                         </div>
 
-                        {/* Section: Receipt Footer */}
+                        {/* Legal footer */}
                         <div className="bg-slate-900/50 backdrop-blur-xl rounded-3xl border border-slate-800 shadow-xl overflow-hidden">
                             <div className="p-6 border-b border-slate-800 flex items-center gap-3">
                                 <div className="w-10 h-10 rounded-xl bg-slate-700/50 border border-slate-700 flex items-center justify-center">
@@ -186,7 +282,6 @@ export default function SettingsPage() {
                             </div>
                         </div>
 
-                        {/* Inline save feedback */}
                         {saved && (
                             <div className="flex items-center gap-3 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-emerald-400 font-bold">
                                 <CheckCircle size={20} />
