@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Save, Loader2, CheckCircle, Building2, FileText, ImagePlus, X } from 'lucide-react';
+import { Save, Loader2, CheckCircle, Building2, FileText, ImagePlus, X, Banknote } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/context/AuthContext';
 
@@ -11,6 +11,10 @@ type Settings = {
     receipt_address: string;
     receipt_legal_footer: string;
     receipt_logo_url: string;
+    transfer_holder: string;
+    transfer_cbu: string;
+    transfer_alias: string;
+    mp_access_token: string;
 };
 
 const EMPTY: Settings = {
@@ -19,6 +23,10 @@ const EMPTY: Settings = {
     receipt_address: '',
     receipt_legal_footer: '',
     receipt_logo_url: '',
+    transfer_holder: '',
+    transfer_cbu: '',
+    transfer_alias: '',
+    mp_access_token: '',
 };
 
 const INPUT = 'w-full p-4 bg-slate-900/50 border border-slate-800 rounded-xl focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none text-white font-medium transition-all shadow-inner placeholder-slate-600';
@@ -44,7 +52,7 @@ export default function SettingsPage() {
         setIsLoading(true);
         const { data } = await supabase
             .from('store_settings')
-            .select('receipt_business_name, receipt_cuit, receipt_address, receipt_legal_footer, receipt_logo_url')
+            .select('receipt_business_name, receipt_cuit, receipt_address, receipt_legal_footer, receipt_logo_url, transfer_holder, transfer_cbu, transfer_alias, mp_access_token')
             .eq('store_id', storeId)
             .maybeSingle();
 
@@ -55,6 +63,10 @@ export default function SettingsPage() {
                 receipt_address: data.receipt_address ?? '',
                 receipt_legal_footer: data.receipt_legal_footer ?? '',
                 receipt_logo_url: data.receipt_logo_url ?? '',
+                transfer_holder: data.transfer_holder ?? '',
+                transfer_cbu: data.transfer_cbu ?? '',
+                transfer_alias: data.transfer_alias ?? '',
+                mp_access_token: data.mp_access_token ?? '',
             });
             if (data.receipt_logo_url) setLogoPreview(data.receipt_logo_url);
         }
@@ -118,6 +130,10 @@ export default function SettingsPage() {
                 receipt_address: form.receipt_address.trim() || null,
                 receipt_legal_footer: form.receipt_legal_footer.trim() || null,
                 receipt_logo_url: form.receipt_logo_url || null,
+                transfer_holder: form.transfer_holder.trim() || null,
+                transfer_cbu: form.transfer_cbu.trim() || null,
+                transfer_alias: form.transfer_alias.trim() || null,
+                mp_access_token: form.mp_access_token.trim() || null,
             }, { onConflict: 'store_id' });
 
         if (err) {
@@ -282,12 +298,45 @@ export default function SettingsPage() {
                             </div>
                         </div>
 
+                        {/* Mercado Pago */}
+                        <div className="bg-slate-900/50 backdrop-blur-xl rounded-3xl border border-slate-800 shadow-xl overflow-hidden">
+                            <div className="p-6 border-b border-slate-800 flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center">
+                                    <Banknote size={20} className="text-sky-400" />
+                                </div>
+                                <div>
+                                    <h2 className="text-lg font-bold text-white">Mercado Pago</h2>
+                                    <p className="text-slate-400 text-sm">
+                                        Token para verificar transferencias recibidas.{' '}
+                                        <a href="https://www.mercadopago.com.ar/developers/panel" target="_blank" rel="noopener noreferrer" className="text-sky-400 hover:underline">
+                                            Obtener token →
+                                        </a>
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="p-6 lg:p-8">
+                                <label className="block text-sm font-bold text-slate-300 mb-2">Access Token de Producción</label>
+                                <input
+                                    type="password"
+                                    placeholder="APP_USR-..."
+                                    className={INPUT}
+                                    value={form.mp_access_token}
+                                    onChange={set('mp_access_token')}
+                                    autoComplete="off"
+                                />
+                                <p className="mt-2 text-xs text-slate-500">
+                                    Solo la dueña ve y edita este campo. Se usa en el servidor para consultar pagos recibidos.
+                                </p>
+                            </div>
+                        </div>
+
                         {saved && (
                             <div className="flex items-center gap-3 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-emerald-400 font-bold">
                                 <CheckCircle size={20} />
                                 Configuración guardada correctamente.
                             </div>
                         )}
+
                     </div>
                 )}
             </div>

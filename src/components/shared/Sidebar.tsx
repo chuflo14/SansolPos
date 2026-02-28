@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, ShoppingCart, Package, ReceiptText, Settings, LogOut, Users, ClipboardList } from 'lucide-react';
+import { LayoutDashboard, ShoppingCart, Package, ReceiptText, Settings, LogOut, Users, ClipboardList, ArrowLeftRight } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
 export function Sidebar() {
@@ -13,6 +13,7 @@ export function Sidebar() {
         { name: 'POS (Caja)', href: '/pos', icon: ShoppingCart },
         { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
         { name: 'Ventas', href: '/ventas', icon: ClipboardList, adminOnly: true },
+        { name: 'Transferencias', href: '/transferencias', icon: ArrowLeftRight },
         { name: 'Clientes', href: '/clientes', icon: Users },
         { name: 'Productos', href: '/products', icon: Package },
         { name: 'Gastos', href: '/expenses', icon: ReceiptText },
