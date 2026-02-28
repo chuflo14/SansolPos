@@ -26,9 +26,26 @@ export function CheckoutModal({
     const [shareNotice, setShareNotice] = useState<string | null>(null);
     const [saleId, setSaleId] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [storeSettings, setStoreSettings] = useState<{
+        receipt_business_name: string | null;
+        receipt_cuit: string | null;
+        receipt_address: string | null;
+        receipt_legal_footer: string | null;
+    } | null>(null);
 
     const { storeId, user } = useAuth();
     const supabase = createClient();
+
+    // Load store settings for receipt branding
+    useEffect(() => {
+        if (!storeId) return;
+        supabase
+            .from('store_settings')
+            .select('receipt_business_name, receipt_cuit, receipt_address, receipt_legal_footer')
+            .eq('store_id', storeId)
+            .maybeSingle()
+            .then(({ data }) => { if (data) setStoreSettings(data); });
+    }, [storeId, supabase]);
 
     useEffect(() => {
         if (!isSharingWhatsApp) return;
@@ -154,12 +171,12 @@ export function CheckoutModal({
     };
 
     const receiptData: ReceiptData = {
-        storeName: "SANSOL",
-        businessName: "SANSOL S.A.",
-        cuit: "30-12345678-9",
-        address: "Calle Falsa 123",
+        storeName: storeSettings?.receipt_business_name || 'SANSOL',
+        businessName: storeSettings?.receipt_business_name || 'SANSOL',
+        cuit: storeSettings?.receipt_cuit || '—',
+        address: storeSettings?.receipt_address || '—',
         date: new Date().toISOString(),
-        receiptNumber: saleId ? saleId.split('-')[0].toUpperCase() : "0000-00000000",
+        receiptNumber: saleId ? saleId.split('-')[0].toUpperCase() : '0000-00000000',
         items: cart.map(c => ({
             name: c.product.name,
             quantity: c.quantity,
@@ -170,8 +187,8 @@ export function CheckoutModal({
         paymentMethod,
         customerPhone: phone || undefined,
         customerName: customerName || undefined,
-        qrUrl: "https://afip.gob.ar/qr",
-        legalFooter: "COMPROBANTE NO VÁLIDO COMO FACTURA (En esta etapa)"
+        qrUrl: 'https://afip.gob.ar/qr',
+        legalFooter: storeSettings?.receipt_legal_footer || 'COMPROBANTE NO VÁLIDO COMO FACTURA'
     };
 
     const buildWhatsAppReceiptText = (receiptUrl?: string) => {
