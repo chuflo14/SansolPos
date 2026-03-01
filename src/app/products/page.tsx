@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Search, Plus, Upload, MoreVertical, Edit2, Trash2, Loader2 } from 'lucide-react';
+import { Search, Plus, Upload, MoreVertical, Edit2, Trash2, Loader2, History } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/context/AuthContext';
 import { ProductModal, Product } from '@/components/products/ProductModal';
 import { ImportCSVModal } from '@/components/products/ImportCSVModal';
+import { StockHistoryModal } from '@/components/products/StockHistoryModal';
 
 export default function ProductsPage() {
     const [searchTerm, setSearchTerm] = useState('');
@@ -15,6 +16,7 @@ export default function ProductsPage() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+    const [historyProduct, setHistoryProduct] = useState<{ id: string, name: string } | null>(null);
     const { storeId, userRole } = useAuth();
     const supabase = createClient();
 
@@ -188,6 +190,13 @@ export default function ProductsPage() {
                                                         {userRole === 'admin' && (
                                                             <>
                                                                 <button
+                                                                    onClick={() => setHistoryProduct({ id: product.id, name: product.name })}
+                                                                    className="p-2 text-slate-400 hover:text-emerald-400 hover:bg-slate-800 rounded-lg transition-colors"
+                                                                    title="Historial de Stock"
+                                                                >
+                                                                    <History size={18} />
+                                                                </button>
+                                                                <button
                                                                     onClick={() => handleEditProduct(product)}
                                                                     className="p-2 text-slate-400 hover:text-blue-400 hover:bg-slate-800 rounded-lg transition-colors"
                                                                     title="Editar"
@@ -247,6 +256,16 @@ export default function ProductsPage() {
                     onClose={() => setIsImportModalOpen(false)}
                     storeId={storeId}
                     onSuccess={fetchProducts}
+                />
+            )}
+
+            {historyProduct && storeId && (
+                <StockHistoryModal
+                    isOpen={!!historyProduct}
+                    onClose={() => setHistoryProduct(null)}
+                    productId={historyProduct.id}
+                    productName={historyProduct.name}
+                    storeId={storeId}
                 />
             )}
         </div>
