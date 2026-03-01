@@ -61,7 +61,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         initializeAuth();
 
         // Escuchar cambios en la autenticación
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
             setSession(session);
             setUser(session?.user ?? null);
 
@@ -71,6 +71,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 setStoreId(null);
                 setUserRole(null);
                 setIsLoading(false);
+                // FASE5: Redirect automático si la sesión muere o se desloguea
+                if (event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED' && !session) {
+                    window.location.href = '/login';
+                }
             }
         });
 

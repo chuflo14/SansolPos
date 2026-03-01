@@ -43,6 +43,8 @@ export default function VentasPage() {
     const [date, setDate] = useState(today);
     const [sales, setSales] = useState<Sale[]>([]);
     const [search, setSearch] = useState('');
+    const [filterStatus, setFilterStatus] = useState('all');
+    const [filterMethod, setFilterMethod] = useState('all');
     const [isLoading, setIsLoading] = useState(true);
     const [expanded, setExpanded] = useState<string | null>(null);
     const [voiding, setVoiding] = useState<string | null>(null);
@@ -92,12 +94,15 @@ export default function VentasPage() {
 
     const filtered = sales.filter(s => {
         const q = search.toLowerCase();
-        return (
-            !q ||
+        const matchesSearch = !q ||
             s.customer_name?.toLowerCase().includes(q) ||
             s.customer_phone?.includes(q) ||
-            s.id.toLowerCase().includes(q)
-        );
+            s.id.toLowerCase().includes(q);
+
+        const matchesStatus = filterStatus === 'all' || s.status === filterStatus;
+        const matchesMethod = filterMethod === 'all' || s.payment_method === filterMethod;
+
+        return matchesSearch && matchesStatus && matchesMethod;
     });
 
     const totalCompleted = filtered.filter(s => s.status === 'COMPLETED').reduce((a, s) => a + s.total, 0);
@@ -145,16 +150,39 @@ export default function VentasPage() {
                     ))}
                 </div>
 
-                {/* Search */}
-                <div className="relative mb-5">
-                    <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
-                    <input
-                        type="text"
-                        placeholder="Buscar por cliente, teléfono o ID..."
-                        value={search}
-                        onChange={e => setSearch(e.target.value)}
-                        className="w-full pl-10 pr-4 py-3 bg-slate-900/50 border border-slate-800 rounded-xl text-white outline-none focus:ring-2 focus:ring-blue-500/50 placeholder-slate-600"
-                    />
+                {/* Filters */}
+                <div className="flex flex-col sm:flex-row gap-4 mb-6">
+                    <div className="relative flex-1">
+                        <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
+                        <input
+                            type="text"
+                            placeholder="Buscar por cliente, teléfono o ID..."
+                            value={search}
+                            onChange={e => setSearch(e.target.value)}
+                            className="w-full pl-10 pr-4 py-3 bg-slate-900/50 border border-slate-800 rounded-xl text-white outline-none focus:ring-2 focus:ring-blue-500/50 placeholder-slate-600"
+                        />
+                    </div>
+
+                    <select
+                        value={filterStatus}
+                        onChange={(e) => setFilterStatus(e.target.value)}
+                        className="px-4 py-3 bg-slate-900/50 border border-slate-800 rounded-xl text-white outline-none focus:ring-2 focus:ring-blue-500/50"
+                    >
+                        <option value="all">Todos los estados</option>
+                        <option value="COMPLETED">Completadas</option>
+                        <option value="CANCELLED">Anuladas</option>
+                    </select>
+
+                    <select
+                        value={filterMethod}
+                        onChange={(e) => setFilterMethod(e.target.value)}
+                        className="px-4 py-3 bg-slate-900/50 border border-slate-800 rounded-xl text-white outline-none focus:ring-2 focus:ring-blue-500/50"
+                    >
+                        <option value="all">Todos los medios</option>
+                        {Object.entries(PAY_LABELS).map(([key, label]) => (
+                            <option key={key} value={key}>{label}</option>
+                        ))}
+                    </select>
                 </div>
 
                 {/* Table */}

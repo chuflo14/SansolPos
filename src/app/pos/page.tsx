@@ -93,6 +93,31 @@ export default function POSPage() {
         if (storeId) fetchProducts();
     }, [storeId, fetchProducts]);
 
+    // FASE5: Suscripción Real Time a los cambios de stock en la tabla products
+    useEffect(() => {
+        if (!storeId || !supabase) return;
+
+        const channel = supabase
+            .channel(`pos_realtime_${storeId}`)
+            .on(
+                'postgres_changes',
+                { event: 'UPDATE', schema: 'public', table: 'products', filter: `store_id=eq.${storeId}` },
+                (payload: any) => {
+                    const newStock = payload.new.current_stock;
+                    const productId = payload.new.id;
+                    // Actualiza el stock en la lista visual instantáneamente
+                    setProducts((curr) => curr.map((p) =>
+                        p.id === productId ? { ...p, current_stock: newStock } : p
+                    ));
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [storeId, supabase]);
+
     const categories = useMemo(() => {
         const uniqueCategories = new Set(products.map(p => p.category).filter(Boolean));
         return Array.from(uniqueCategories).sort();

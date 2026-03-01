@@ -13,6 +13,7 @@ export function Sidebar() {
         { name: 'POS (Caja)', href: '/pos', icon: ShoppingCart },
         { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
         { name: 'Ventas', href: '/ventas', icon: ClipboardList, adminOnly: true },
+        { name: 'Historial Cajas', href: '/cajas', icon: ReceiptText, adminOnly: true }, // FASE5
         { name: 'Transferencias', href: '/transferencias', icon: ArrowLeftRight },
         { name: 'Clientes', href: '/clientes', icon: Users },
         { name: 'Productos', href: '/products', icon: Package },
@@ -23,7 +24,7 @@ export function Sidebar() {
     const navItems = allNavItems.filter(item => {
         if (userRole === 'admin') return true;
         // Cashier role only sees POS and Expenses
-        if ((item as { adminOnly?: boolean }).adminOnly) return false;
+        if (item.adminOnly) return false;
         return ['POS (Caja)', 'Gastos'].includes(item.name);
     });
 
