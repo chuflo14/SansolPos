@@ -134,9 +134,9 @@ export function ProductModal({ isOpen, onClose, editingProduct, storeId, categor
             }
             const productData = {
                 store_id: storeId,
-                name: formData.name,
-                sku: formData.sku || null,
-                category: formData.category,
+                name: formData.name.trim(),
+                sku: formData.sku.trim() || null,
+                category: formData.category.trim(),
                 sale_price: parseFloat(formData.sale_price),
                 cost_price: parseFloat(formData.cost_price) || 0,
                 current_stock: parseInt(formData.current_stock, 10) || 0,
@@ -162,10 +162,11 @@ export function ProductModal({ isOpen, onClose, editingProduct, storeId, categor
             }
 
             // check if the category is new, if so add it to 'categories' table
-            if (formData.category && !categories.includes(formData.category)) {
+            const finalCat = formData.category.trim();
+            if (finalCat && !categories.includes(finalCat)) {
                 const { error: catError } = await supabase
                     .from('categories')
-                    .insert([{ store_id: storeId, name: formData.category }]);
+                    .insert([{ store_id: storeId, name: finalCat }]);
                 if (catError && !catError.message.includes('duplicate key value')) {
                     console.error('Error auto-creating category:', catError);
                 }
@@ -313,6 +314,16 @@ export function ProductModal({ isOpen, onClose, editingProduct, storeId, categor
                             />
                         </div>
                     </div>
+
+                    {/* FASE6: Warn en cambios manuales de Stock */}
+                    {editingProduct && formData.current_stock !== editingProduct.current_stock.toString() && (
+                        <div className="bg-orange-500/10 border border-orange-500/20 text-orange-400 p-4 rounded-xl text-sm font-medium flex items-start gap-3 mt-2">
+                            <span className="text-xl leading-none">⚠️</span>
+                            <p>
+                                <strong>Estás modificando el stock manualmente.</strong> Utilizá esta opción solo para ajustes de inventario o correcciones. Las ventas se descuentan automáticamente desde el POS.
+                            </p>
+                        </div>
+                    )}
                 </form>
 
                 <div className="p-6 border-t border-slate-800 flex flex-col gap-4 bg-slate-900/50">
